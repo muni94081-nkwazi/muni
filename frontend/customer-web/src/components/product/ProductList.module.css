@@ -1,0 +1,52 @@
+/* ─── Product grid ───────────────────────────────────────────────────────────
+ *
+ * Fixed column counts: 4 on desktop, 3 on tablet, 2 on phones.
+ *
+ * This was an inline `repeat(auto-fill, minmax(220px, 1fr))`. Two problems
+ * with that here: the column count was whatever happened to fit, which on a
+ * 1500px container meant five ~268px cards rather than four large ones; and
+ * because it lived in a style attribute it could not carry breakpoints at all,
+ * so phone and desktop were served by the same rule.
+ *
+ * At four columns inside the section card the tiles land near 330px wide, and
+ * since the card's media box is a square that is also the image's edge — which
+ * is where the extra prominence comes from. Nothing about the card's structure
+ * changes; it is the same card, given room.
+ */
+
+.grid {
+  display: grid;
+  /* minmax(0, 1fr) rather than 1fr: a long product name would otherwise set a
+     min-content floor and push the columns out of equal width. */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-5);
+}
+
+/* Tablet — three across. */
+@media (max-width: 1024px) {
+  .grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-4);
+  }
+}
+
+/* Phones — two across, with a tighter gutter so neither column is starved.
+   Matches the card's own breakpoint, where padding and type step down for the
+   narrower tile.
+ *
+ * `auto-fit` with a 150px floor rather than a hard `repeat(2, …)`, and the
+ * difference only shows in one place: ProductListPage lays itself out as a
+ * fixed `220px 1fr`, which never collapses, so on a 390px phone its filter
+ * sidebar takes 220px and leaves the grid 114px. Split two ways that is a
+ * 51px card — an unreadable sliver. The floor makes the grid fall back to a
+ * single column there instead. Everywhere the container is a normal phone
+ * width (the homepage grids measure 318px) this still resolves to exactly two
+ * columns, which is what it is for.
+ *
+ * The sidebar itself is the real bug and is not this file's to fix. */
+@media (max-width: 640px) {
+  .grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
+    gap: var(--space-3);
+  }
+}

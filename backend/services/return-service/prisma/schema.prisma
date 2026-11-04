@@ -1,0 +1,70 @@
+// ─── return-service schema ────────────────────────────────────────────────────
+//
+// Owns database `muni_return`. Replaces the `returnsStore` Map in
+// services/return.service.ts, which dropped every open RMA on restart — an
+// approved return that vanishes is a refund the buyer was promised and will
+// never be paid.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ReturnStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  REFUNDED
+  CANCELLED
+}
+
+model ReturnRequest {
+  id       String @id
+  orderId  String @map("order_id")
+  userId   String @map("user_id")
+  sellerId String @map("seller_id")
+
+  items ReturnItem[]
+
+  description  String?
+  refundMethod String  @map("refund_method")
+
+  // Nullable because the request schema has no refundAmount field, so nothing
+  // a client submits ever supplies one. See the note on ReturnRequest in
+  // models/return.model.ts before assuming this is populated.
+  refundAmount Decimal? @map("refund_amount") @db.Decimal(14, 2)
+  currency     String?
+
+  status         ReturnStatus
+  isAutoApproved Boolean      @default(false) @map("is_auto_approved")
+  guaranteeBadge String       @map("guarantee_badge")
+
+  requestedAt DateTime  @map("requested_at")
+  approvedAt  DateTime? @map("approved_at")
+  updatedAt   DateTime  @map("updated_at")
+
+  // The three list endpoints: buyer's returns, seller's queue, admin's all.
+  @@index([userId, requestedAt])
+  @@index([sellerId, requestedAt])
+  @@index([status])
+  @@index([orderId])
+  @@map("return_requests")
+}
+
+model ReturnItem {
+  id       String        @id
+  returnId String        @map("return_id")
+  request  ReturnRequest @relation(fields: [returnId], references: [id], onDelete: Cascade)
+
+  orderItemId String @map("order_item_id")
+  quantity    Int
+  reason      String
+
+  @@index([returnId])
+  @@map("return_items")
+}

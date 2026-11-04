@@ -1,0 +1,21 @@
+/*
+ * The one thing the auth screens cannot express as an inline style: a media
+ * query. Everything else in AuthUI.tsx stays inline alongside the markup it
+ * styles.
+ */
+
+/* Three provider pills in a row, as the create-account reference has them. */
+.socialRow {
+  display: flex;
+  gap: var(--space-3);
+}
+
+/*
+ * Below ~420px three pills share so little width that "Facebook" truncates to
+ * "Face…". Stacking keeps every label whole and the tap targets full width.
+ */
+@media (max-width: 420px) {
+  .socialRow {
+    flex-direction: column;
+  }
+}

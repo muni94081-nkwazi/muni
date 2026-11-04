@@ -1,0 +1,190 @@
+name: CD Staging
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.filter.outputs.changes }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            api-gateway:
+              - 'backend/api-gateway/**'
+            advertising-service:
+              - 'backend/services/advertising-service/**'
+            analytics-service:
+              - 'backend/services/analytics-service/**'
+            auth-service:
+              - 'backend/services/auth-service/**'
+            buyer-protection-service:
+              - 'backend/services/buyer-protection-service/**'
+            cart-service:
+              - 'backend/services/cart-service/**'
+            chat-service:
+              - 'backend/services/chat-service/**'
+            checkout-service:
+              - 'backend/services/checkout-service/**'
+            container-service:
+              - 'backend/services/container-service/**'
+            currency-service:
+              - 'backend/services/currency-service/**'
+            discount-service:
+              - 'backend/services/discount-service/**'
+            dispute-service:
+              - 'backend/services/dispute-service/**'
+            fraud-service:
+              - 'backend/services/fraud-service/**'
+            fulfillment-service:
+              - 'backend/services/fulfillment-service/**'
+            inventory-service:
+              - 'backend/services/inventory-service/**'
+            loyalty-service:
+              - 'backend/services/loyalty-service/**'
+            marketplace-service:
+              - 'backend/services/marketplace-service/**'
+            media-service:
+              - 'backend/services/media-service/**'
+            notification-service:
+              - 'backend/services/notification-service/**'
+            order-service:
+              - 'backend/services/order-service/**'
+            payment-service:
+              - 'backend/services/payment-service/**'
+            pricing-service:
+              - 'backend/services/pricing-service/**'
+            product-service:
+              - 'backend/services/product-service/**'
+            qa-service:
+              - 'backend/services/qa-service/**'
+            recommendation-service:
+              - 'backend/services/recommendation-service/**'
+            return-service:
+              - 'backend/services/return-service/**'
+            review-service:
+              - 'backend/services/review-service/**'
+            search-service:
+              - 'backend/services/search-service/**'
+            seller-education-service:
+              - 'backend/services/seller-education-service/**'
+            shipping-service:
+              - 'backend/services/shipping-service/**'
+            tax-service:
+              - 'backend/services/tax-service/**'
+            user-service:
+              - 'backend/services/user-service/**'
+            wishlist-service:
+              - 'backend/services/wishlist-service/**'
+            shared:
+              - 'backend/shared/**'
+              - 'backend/infrastructure/**'
+
+  build-and-push:
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.changed != '[]' && needs.detect-changes.outputs.changed != '' }}
+    permissions:
+      id-token: write
+      contents: read
+    strategy:
+      matrix:
+        service: ${{ fromJSON(needs.detect-changes.outputs.changed) }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: af-south-1
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+        id: login-ecr
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker-container
+      - name: Build and push
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          if [ "${{ matrix.service }}" = "shared" ]; then exit 0; fi
+          IMAGE_TAG=$(echo ${{ github.sha }} | cut -c1-7)
+          DOCKERFILE="backend/services/${{ matrix.service }}/Dockerfile"
+          if [ "${{ matrix.service }}" = "api-gateway" ]; then
+            DOCKERFILE="backend/api-gateway/Dockerfile"
+          fi
+          docker buildx build --platform linux/amd64 --push \
+            --cache-from type=registry,ref=$ECR_REGISTRY/muni/${{ matrix.service }}:cache \
+            --cache-to type=registry,ref=$ECR_REGISTRY/muni/${{ matrix.service }}:cache,mode=max \
+            --tag $ECR_REGISTRY/muni/${{ matrix.service }}:$IMAGE_TAG \
+            --tag $ECR_REGISTRY/muni/${{ matrix.service }}:staging \
+            -f $DOCKERFILE .
+      - name: Run Trivy scan
+        if: ${{ matrix.service != 'shared' }}
+        uses: aquasecurity/trivy-action@master
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        with:
+          image-ref: '${{ env.ECR_REGISTRY }}/muni/${{ matrix.service }}:staging'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+  deploy-staging:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    environment: staging
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: af-south-1
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name muni-cluster --region af-south-1
+      - name: Ensure namespace exists
+        run: kubectl create namespace muni-staging --dry-run=client -o yaml | kubectl apply -f -
+      - name: Apply Kustomize
+        run: kubectl apply -k backend/infrastructure/kubernetes/overlays/staging -n muni-staging
+      - name: Update Deployments
+        run: |
+          IMAGE_TAG=$(echo ${{ github.sha }} | cut -c1-7)
+          ECR_REGISTRY="123456789012.dkr.ecr.af-south-1.amazonaws.com"
+          for service in $(echo '${{ needs.detect-changes.outputs.changed }}' | jq -r '.[]'); do
+            if [ "$service" != "shared" ]; then
+              kubectl set image deployment/$service $service=$ECR_REGISTRY/muni/$service:$IMAGE_TAG -n muni-staging
+              kubectl rollout status deployment/$service -n muni-staging --timeout=300s
+            fi
+          done
+      - name: Smoke test
+        run: curl -f https://staging-api.muni.ug/health/live || exit 1
+
+  run-integration-tests:
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      - name: Run tests
+        env:
+          TEST_BASE_URL: https://staging-api.muni.ug
+        run: npx jest --testPathPattern=tests/integration --forceExit --passWithNoTests

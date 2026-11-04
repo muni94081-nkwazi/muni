@@ -1,0 +1,143 @@
+// Generate into this service rather than the hoisted node_modules/@prisma/client,
+// which every Prisma service in the monorepo would otherwise overwrite in turn —
+// leaving only the last service to run `prisma generate` with a usable client.
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum InvoiceType {
+  INVOICE
+  /// Reverses all or part of an earlier invoice. Corrections are issued this
+  /// way rather than by editing, because an issued tax invoice is a legal
+  /// document and rewriting one destroys the audit trail a revenue authority
+  /// audits against.
+  CREDIT_NOTE
+}
+
+enum InvoiceStatus {
+  /// Being assembled; may still change and carries no invoice number.
+  DRAFT
+  /// Numbered and final. Lines are immutable from here.
+  ISSUED
+  /// Voided by a credit note. The row stays; the number is never reused.
+  CANCELLED
+}
+
+// ─── Tax invoice ────────────────────────────────────────────────────────────
+//
+// The platform calculated VAT on every order but never produced the document
+// proving it — so a business buyer could not reclaim input tax, and the
+// marketplace had no record to file against. This is that record.
+//
+// One invoice per sub-order rather than per order: on a multi-seller order,
+// each seller is the supplier for their own lines, and it is their TIN that
+// belongs on the document.
+model TaxInvoice {
+  id String @id @default(uuid())
+
+  /// Sequential per series and year, e.g. "INV-2026-000042". Null while DRAFT:
+  /// numbers are only allocated at issue, so a discarded draft cannot leave a
+  /// gap in the sequence.
+  invoiceNumber String? @unique
+
+  type   InvoiceType   @default(INVOICE)
+  status InvoiceStatus @default(DRAFT)
+
+  orderId    String
+  subOrderId String?
+  /// Supplier of record for these lines.
+  sellerId   String
+  buyerId    String
+
+  // ── Supplier (seller) details, snapshotted ────────────────────────────────
+  // Snapshotted rather than joined: an invoice must always render exactly as
+  // it was issued, even after the seller renames or re-registers.
+  sellerName    String
+  sellerTin     String?
+  sellerAddress String?
+  sellerEmail   String?
+
+  // ── Customer (buyer) details, snapshotted ─────────────────────────────────
+  buyerName    String
+  /// Present when the buyer is VAT-registered and reclaiming input tax.
+  buyerTin     String?
+  buyerAddress String?
+  buyerEmail   String?
+
+  countryCode String
+  currency    String @default("UGX")
+
+  /// Amounts are stored in minor units (cents/ngwee) as integers. Floating
+  /// point cannot represent tax totals exactly, and an invoice that is off by
+  /// a cent is a reconciliation failure, not a rounding detail.
+  subtotalExclTax Int
+  totalTax        Int
+  totalInclTax    Int
+
+  /// The credit note that voided this invoice, if any.
+  creditNoteId String? @unique
+  /// Set on a credit note, pointing at the invoice it reverses.
+  reversesInvoiceId String?
+  cancellationReason String?
+
+  issuedAt    DateTime?
+  cancelledAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lines TaxInvoiceLine[]
+
+  /// Derived uniqueness key, "<orderId>:<subOrderId|->:<type>".
+  ///
+  /// A composite @@unique([orderId, subOrderId, type]) would not work: Postgres
+  /// treats NULLs as distinct in a unique index, so an order with no sub-order
+  /// could be invoiced repeatedly. Collapsing the null into a literal makes the
+  /// constraint actually hold.
+  invoiceKey String @unique
+  @@index([sellerId, issuedAt])
+  @@index([buyerId, issuedAt])
+  @@index([status, issuedAt])
+  @@map("tax_invoices")
+}
+
+model TaxInvoiceLine {
+  id        String     @id @default(uuid())
+  invoiceId String
+  invoice   TaxInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  productId   String?
+  description String
+  quantity    Int    @default(1)
+
+  /// Minor units, as on the parent invoice.
+  unitPriceExclTax Int
+  lineSubtotal     Int
+  /// Stored as basis points (1800 = 18.00%) so the rate is exact and printable.
+  taxRateBps       Int
+  taxAmount        Int
+  lineTotal        Int
+
+  /// Why this line was zero- or reduced-rated, for the audit trail.
+  taxCategory String?
+  taxExemptReason String?
+
+  @@index([invoiceId])
+  @@map("tax_invoice_lines")
+}
+
+/// Per-series, per-year counter. Revenue authorities require invoice numbers
+/// to be gap-free and sequential, which neither a UUID nor count(*) provides.
+model InvoiceCounter {
+  /// Composite key, e.g. "INV-2026" or "CN-2026".
+  id    String @id
+  value Int    @default(0)
+
+  @@map("invoice_counters")
+}

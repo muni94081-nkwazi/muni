@@ -1,0 +1,243 @@
+// Generate into this service rather than the hoisted node_modules/@prisma/client,
+// which every Prisma service in the monorepo would otherwise overwrite in turn —
+// leaving only the last service to run `prisma generate` with a usable client.
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ReviewStatus {
+  /// Awaiting moderation. Never shown publicly.
+  PENDING
+  PUBLISHED
+  REJECTED
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+}
+
+enum MediaStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum VoteType {
+  HELPFUL
+  NOT_HELPFUL
+}
+
+enum PurchaseStatus {
+  /// Order placed but not yet delivered — not enough to earn a verified badge.
+  ORDERED
+  DELIVERED
+  CANCELLED
+}
+
+enum ReportStatus {
+  OPEN
+  UPHELD
+  DISMISSED
+}
+
+// ─── Review ─────────────────────────────────────────────────────────────────
+//
+// Reviews were previously an in-process array seeded with sample rows, so
+// every restart silently discarded real buyer content and the `verified` flag
+// was whatever the client posted. Both are fixed here: rows are durable, and
+// `isVerifiedPurchase` is derived server-side from the PurchaseRecord
+// projection — a client cannot set it.
+model Review {
+  id String @id @default(uuid())
+
+  productId String
+  variantId String?
+  /// Denormalised from the purchase record so seller-facing queries and the
+  /// seller-response permission check don't need a product-service call.
+  sellerId  String?
+
+  userId String
+  /// Display name snapshotted at write time: a later profile rename must not
+  /// silently rewrite the attribution on reviews the buyer already published.
+  userName String
+
+  /// The order this review is attributed to. Required — a review always
+  /// answers "how was this specific purchase", which is also what makes the
+  /// one-review-per-purchase constraint below meaningful.
+  orderId    String
+  subOrderId String?
+
+  rating Int
+  title  String?
+  body   String
+
+  status             ReviewStatus @default(PUBLISHED)
+  /// Server-derived. See review.service.ts#create.
+  isVerifiedPurchase Boolean      @default(false)
+
+  helpfulCount    Int @default(0)
+  notHelpfulCount Int @default(0)
+  reportCount     Int @default(0)
+
+  /// Seller's public reply. One per review — a threaded conversation belongs
+  /// in chat-service, not on a product page.
+  sellerResponse    String?
+  sellerRespondedAt DateTime?
+
+  /// Moderation trail, admin-only.
+  moderatedBy     String?
+  moderationNote  String?
+  moderatedAt     DateTime?
+
+  language String @default("en")
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  media   ReviewMedia[]
+  votes   ReviewVote[]
+  reports ReviewReport[]
+
+  /// One review per buyer per product per order. A buyer who bought the same
+  /// product on two separate orders may review it twice — they had two
+  /// distinct experiences — but cannot review one purchase repeatedly.
+  @@unique([userId, productId, orderId])
+  @@index([productId, status, createdAt])
+  @@index([productId, status, helpfulCount])
+  @@index([userId])
+  @@index([sellerId, status])
+  @@map("reviews")
+}
+
+model ReviewMedia {
+  id       String @id @default(uuid())
+  reviewId String
+  review   Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  type         MediaType
+  url          String
+  thumbnailUrl String?
+  status       MediaStatus @default(PENDING)
+
+  moderatedBy String?
+  moderatedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([reviewId])
+  @@index([status])
+  @@map("review_media")
+}
+
+// ─── Helpfulness votes ──────────────────────────────────────────────────────
+//
+// Stored as rows rather than a bare counter so one account cannot inflate a
+// review by calling the endpoint repeatedly — which the previous
+// `review.helpfulCount++` handler allowed without limit. The denormalised
+// counters on Review are maintained in the same transaction as the vote.
+model ReviewVote {
+  id       String @id @default(uuid())
+  reviewId String
+  review   Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  userId String
+  vote   VoteType
+
+  createdAt DateTime @default(now())
+
+  @@unique([reviewId, userId])
+  @@index([reviewId])
+  @@map("review_votes")
+}
+
+model ReviewReport {
+  id       String @id @default(uuid())
+  reviewId String
+  review   Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  reporterId String
+  reason     String
+  note       String?
+  status     ReportStatus @default(OPEN)
+
+  resolvedBy String?
+  resolvedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@unique([reviewId, reporterId])
+  @@index([status])
+  @@map("review_reports")
+}
+
+// ─── Purchase projection ────────────────────────────────────────────────────
+//
+// A local read-model of "who bought what", built by consuming order-events
+// (see src/consumers/order.consumer.ts). It exists so the hot path — checking
+// review eligibility on every write — is one indexed local lookup instead of a
+// synchronous call into order-service on a page that is already slow.
+//
+// order.created carries userId + line items; order.delivered carries only
+// orderId/subOrderId/sellerId. So rows are inserted at creation in ORDERED
+// state and promoted to DELIVERED when the matching sub-order is delivered.
+model PurchaseRecord {
+  id String @id @default(uuid())
+
+  userId    String
+  productId String
+  variantId String?
+
+  orderId    String
+  subOrderId String?
+  sellerId   String?
+
+  status PurchaseStatus @default(ORDERED)
+
+  quantity  Int      @default(1)
+  orderedAt DateTime @default(now())
+  deliveredAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Idempotency for the consumer: replaying order.created must not duplicate.
+  @@unique([userId, productId, orderId])
+  @@index([userId, productId, status])
+  @@index([orderId])
+  @@index([orderId, sellerId])
+  @@map("purchase_records")
+}
+
+// ─── Rating summary ─────────────────────────────────────────────────────────
+//
+// Denormalised aggregate per product. The previous implementation averaged the
+// whole in-memory array on every list call; at catalogue scale that is a table
+// scan per product-page render. Recomputed transactionally whenever a review's
+// contribution changes (publish, edit, delete, moderate).
+model ProductRatingSummary {
+  productId String @id
+
+  totalReviews  Int   @default(0)
+  averageRating Float @default(0)
+
+  /// Star histogram — the "5★ 80%" bars on a product page, without a GROUP BY.
+  count1 Int @default(0)
+  count2 Int @default(0)
+  count3 Int @default(0)
+  count4 Int @default(0)
+  count5 Int @default(0)
+
+  verifiedReviews Int @default(0)
+
+  updatedAt DateTime @updatedAt
+
+  @@map("product_rating_summaries")
+}

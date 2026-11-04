@@ -1,0 +1,43 @@
+# Build context excludes for the repo-root context used by every service
+# Dockerfile (see docker-compose.yml `context: .` and the CI/CD workflows).
+#
+# The Dockerfiles COPY selectively, so nothing here changes what lands in an
+# image built in CI. It matters for local builds: without the node_modules
+# rules, `COPY backend/shared/ ./backend/shared/` would drag the host's
+# already-installed (and possibly wrong-platform) dependencies into the image.
+
+# Dependencies — always reinstalled inside the image via `npm ci`
+node_modules/
+**/node_modules/
+
+# VCS and CI metadata
+.git/
+.github/
+.gitignore
+.gitleaks.toml
+
+# Build and test output
+dist/
+**/dist/
+build/
+coverage/
+**/coverage/
+*.tsbuildinfo
+test-results/
+playwright-report/
+
+# Local environment files — secrets must arrive via runtime env, never a layer
+.env
+.env.*
+!.env.example
+
+# Editor and OS noise
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Docs and local tooling that no image needs
+docs/
+*.md
+.claude/

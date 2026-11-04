@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  api-gateway:
+    build: ../../services/api-gateway
+    ports:
+      - "8080:8080"
+    networks:
+      - muni-network
+
+  auth-service:
+    build: ../../services/auth-service
+    ports:
+      - "4001:4001"
+    networks:
+      - muni-network
+
+  product-service:
+    build: ../../services/product-service
+    ports:
+      - "4002:4002"
+    networks:
+      - muni-network
+
+  order-service:
+    build: ../../services/order-service
+    ports:
+      - "4003:4003"
+    networks:
+      - muni-network
+
+  user-service:
+    build: ../../services/user-service
+    ports:
+      - "4004:4004"
+    networks:
+      - muni-network
+
+  payment-service:
+    build: ../../services/payment-service
+    ports:
+      - "4005:4005"
+    networks:
+      - muni-network
+
+  shipping-service:
+    build: ../../services/shipping-service
+    ports:
+      - "4006:4006"
+    networks:
+      - muni-network
+
+  notification-service:
+    build: ../../services/notification-service
+    ports:
+      - "4007:4007"
+    networks:
+      - muni-network
+
+  recommendation-service:
+    build: ../../services/recommendation-service
+    ports:
+      - "4008:4008"
+    networks:
+      - muni-network
+
+  analytics-service:
+    build: ../../services/analytics-service
+    ports:
+      - "4009:4009"
+    networks:
+      - muni-network
+
+networks:
+  muni-network:
+    driver: bridge

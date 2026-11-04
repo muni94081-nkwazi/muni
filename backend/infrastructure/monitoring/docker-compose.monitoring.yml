@@ -1,0 +1,143 @@
+version: '3.8'
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    container_name: muni-prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      - --web.enable-lifecycle
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alerts:/etc/prometheus/alerts:ro
+      - prometheus-data:/prometheus
+    networks:
+      - monitoring
+    restart: unless-stopped
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: muni-alertmanager
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    networks:
+      - monitoring
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: muni-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin123
+      GF_INSTALL_PLUGINS: grafana-piechart-panel,grafana-clock-panel
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks:
+      - monitoring
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.57
+    container_name: muni-jaeger
+    ports:
+      - "6831:6831/udp"
+      - "16686:16686"
+      - "14268:14268"
+      - "4317:4317"
+      - "4318:4318"
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+      SPAN_STORAGE_TYPE: memory
+      MEMORY_MAX_TRACES: "50000"
+    networks:
+      - monitoring
+    restart: unless-stopped
+
+  elasticsearch-monitoring:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
+    container_name: muni-es-monitoring
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ports:
+      - "9201:9200"
+    volumes:
+      - es-monitoring-data:/usr/share/elasticsearch/data
+    networks:
+      - monitoring
+    restart: unless-stopped
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.13.4
+    container_name: muni-logstash
+    ports:
+      - "5044:5044"
+    environment:
+      ELASTICSEARCH_URL: http://elasticsearch-monitoring:9200
+      LS_JAVA_OPTS: "-Xmx512m -Xms512m"
+    volumes:
+      - ./elk/logstash/pipeline:/usr/share/logstash/pipeline:ro
+    networks:
+      - monitoring
+    restart: unless-stopped
+    depends_on:
+      - elasticsearch-monitoring
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.13.4
+    container_name: muni-kibana
+    ports:
+      - "5601:5601"
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch-monitoring:9200
+      XPACK_SECURITY_ENABLED: "false"
+    networks:
+      - monitoring
+    restart: unless-stopped
+    depends_on:
+      - elasticsearch-monitoring
+
+  # Exporters for local dev
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: muni-redis-exporter
+    environment:
+      REDIS_ADDR: redis://host.docker.internal:6379
+    ports:
+      - "9121:9121"
+    networks:
+      - monitoring
+    restart: unless-stopped
+
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:latest
+    container_name: muni-kafka-exporter
+    command:
+      - --kafka.server=host.docker.internal:9092
+    ports:
+      - "9308:9308"
+    networks:
+      - monitoring
+    restart: unless-stopped
+
+volumes:
+  prometheus-data:
+  grafana-data:
+  es-monitoring-data:
+
+networks:
+  monitoring:
+    driver: bridge

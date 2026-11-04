@@ -1,0 +1,139 @@
+// Generate into this service rather than the hoisted node_modules/@prisma/client,
+// which every Prisma service in the monorepo would otherwise overwrite in turn —
+// leaving only the last service to run `prisma generate` with a usable client.
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Channel {
+  IN_APP
+  SMS
+  WHATSAPP
+  PUSH
+  EMAIL
+}
+
+enum Category {
+  /// Order, payment, delivery, security. Sent regardless of marketing opt-out.
+  TRANSACTIONAL
+  /// Promotions, price drops, abandoned cart. Requires opt-in per channel.
+  MARKETING
+}
+
+enum DeliveryStatus {
+  /// Accepted for sending, not yet attempted.
+  QUEUED
+  /// Handed to the provider, provider accepted it.
+  SENT
+  /// Provider confirmed handset/inbox delivery via callback.
+  DELIVERED
+  /// Permanently failed — retries exhausted or a non-retryable provider error.
+  FAILED
+  /// Not attempted: recipient opted out, or no address for this channel.
+  SUPPRESSED
+}
+
+// ─── Notification ───────────────────────────────────────────────────────────
+//
+// One row per notification per recipient. This is both the in-app inbox and
+// the record of what the platform told someone — previously a Map that was
+// discarded on every restart, which meant a buyer's notification history and
+// the evidence of what we sent them both vanished on deploy.
+model Notification {
+  id String @id @default(uuid())
+
+  userId String
+  /// The domain event that produced this, e.g. "order.shipped". Also the
+  /// template key — see src/templates/index.ts.
+  type     String
+  category Category @default(TRANSACTIONAL)
+
+  title String
+  body  String
+
+  /// Event payload, kept so a client can deep-link (orderId, productId, …).
+  data Json?
+
+  read   Boolean   @default(false)
+  readAt DateTime?
+
+  /// Collapses duplicate sends when a producer redelivers the same event.
+  /// Null for notifications raised directly via the REST API.
+  dedupeKey String? @unique
+
+  createdAt DateTime @default(now())
+
+  deliveries Delivery[]
+
+  @@index([userId, read, createdAt])
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+// ─── Delivery ───────────────────────────────────────────────────────────────
+//
+// One row per channel attempted for a notification, holding the provider's
+// verdict. Separate from Notification because a single "order shipped" fans
+// out to SMS + push + in-app, and each of those succeeds or fails on its own —
+// a failed SMS must not hide the push that worked.
+model Delivery {
+  id             String       @id @default(uuid())
+  notificationId String
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  channel Channel
+  status  DeliveryStatus @default(QUEUED)
+
+  /// Where it was sent: msisdn, email address, or device token (truncated).
+  destination String?
+
+  /// Which driver handled it — africastalking, twilio, fcm, smtp.
+  provider String?
+  /// Provider's own id, needed to reconcile asynchronous delivery receipts.
+  providerMessageId String?
+
+  attempts    Int       @default(0)
+  lastError   String?
+  /// When the retry worker should next pick this up. Null once terminal.
+  nextAttemptAt DateTime?
+
+  sentAt      DateTime?
+  deliveredAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, nextAttemptAt])
+  @@index([notificationId])
+  @@index([providerMessageId])
+  @@map("deliveries")
+}
+
+// ─── Device token ───────────────────────────────────────────────────────────
+//
+// FCM registration tokens. A user may have several (phone, tablet, web), and
+// tokens are rotated by the client SDK, so the token is the identity and the
+// row is upserted on it rather than on userId.
+model DeviceToken {
+  id String @id @default(uuid())
+
+  userId   String
+  token    String  @unique
+  platform String  @default("android")
+  /// Set when FCM reports the token as unregistered; kept rather than deleted
+  /// so a re-registration can distinguish "new device" from "returning one".
+  disabledAt DateTime?
+  lastSeenAt DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, disabledAt])
+  @@map("device_tokens")
+}

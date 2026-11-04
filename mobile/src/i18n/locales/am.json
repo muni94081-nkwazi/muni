@@ -1,0 +1,25 @@
+{
+  "auth": {
+    "login": "ግባ",
+    "register": "መለያ ፍጠር",
+    "email": "ኢሜይል",
+    "password": "የይለፍ ቃል"
+  },
+  "product": {
+    "addToCart": "ወደ ቅርጫት ጨምር"
+  },
+  "cart": {
+    "title": "ቅርጫቴ",
+    "proceedToCheckout": "ቀጥል"
+  },
+  "checkout": {
+    "placeOrder": "ትዕዛዝ አስቀምጥ"
+  },
+  "orders": {
+    "title": "ትዕዛዞቼ"
+  },
+  "profile": {
+    "signOut": "ውጣ",
+    "language": "ቋንቋ"
+  }
+}

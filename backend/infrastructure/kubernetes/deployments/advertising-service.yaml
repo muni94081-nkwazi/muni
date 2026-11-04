@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: advertising-service
+  namespace: muni-prod
+  labels:
+    app.kubernetes.io/name: advertising-service
+    app.kubernetes.io/part-of: muni-platform
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: advertising-service
+  template:
+    metadata:
+      labels:
+        app: advertising-service
+    spec:
+      containers:
+        - name: advertising-service
+          image: 123456789012.dkr.ecr.af-south-1.amazonaws.com/muni/advertising-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 4027
+              name: http
+          env:
+            - name: PORT
+              value: "4027"
+            - name: NODE_ENV
+              value: "production"
+            - name: KAFKA_BROKERS
+              value: "kafka-cluster-kafka-bootstrap.muni-prod.svc.cluster.local:9092"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 4027
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 4027
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: advertising-service-svc
+  namespace: muni-prod
+  labels:
+    app: advertising-service
+spec:
+  type: ClusterIP
+  ports:
+    - port: 4027
+      targetPort: 4027
+      protocol: TCP
+      name: http
+  selector:
+    app: advertising-service

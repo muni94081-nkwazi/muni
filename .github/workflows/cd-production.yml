@@ -1,0 +1,193 @@
+name: CD Production
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+jobs:
+  validate-staging:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate Staging Health
+        run: |
+          curl -f https://staging-api.muni.ug/health/live || exit 1
+
+  build-production-images:
+    runs-on: ubuntu-latest
+    needs: [validate-staging]
+    permissions:
+      id-token: write
+      contents: read
+    strategy:
+      matrix:
+        service: [api-gateway, advertising-service, analytics-service, auth-service, buyer-protection-service, cart-service, chat-service, checkout-service, container-service, currency-service, discount-service, dispute-service, fraud-service, fulfillment-service, inventory-service, loyalty-service, marketplace-service, media-service, notification-service, order-service, payment-service, pricing-service, product-service, qa-service, recommendation-service, return-service, review-service, search-service, seller-education-service, shipping-service, tax-service, user-service, wishlist-service]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: af-south-1
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+        id: login-ecr
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker-container
+      - name: Build and push
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          IMAGE_TAG=${{ github.ref_name }}
+          DOCKERFILE="backend/services/${{ matrix.service }}/Dockerfile"
+          if [ "${{ matrix.service }}" = "api-gateway" ]; then
+            DOCKERFILE="backend/api-gateway/Dockerfile"
+          fi
+          docker buildx build --platform linux/amd64 --push \
+            --cache-from type=registry,ref=$ECR_REGISTRY/muni/${{ matrix.service }}:cache \
+            --cache-to type=registry,ref=$ECR_REGISTRY/muni/${{ matrix.service }}:cache,mode=max \
+            --tag $ECR_REGISTRY/muni/${{ matrix.service }}:$IMAGE_TAG \
+            --tag $ECR_REGISTRY/muni/${{ matrix.service }}:stable \
+            -f $DOCKERFILE .
+      - name: Run Trivy scan
+        uses: aquasecurity/trivy-action@master
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        with:
+          image-ref: '${{ env.ECR_REGISTRY }}/muni/${{ matrix.service }}:stable'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          # HIGH as well as CRITICAL. Both advisories that mattered most in this
+          # repository — nodemailer SMTP command injection, sharp's libvips CVEs
+          # on a user-upload path — were HIGH, and a CRITICAL-only gate shipped
+          # both without comment.
+          severity: 'CRITICAL,HIGH'
+
+  deploy-production:
+    runs-on: ubuntu-latest
+    needs: build-production-images
+    environment: production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: af-south-1
+      # Resolves the registry host for this account from the assumed role,
+      # rather than the hardcoded 123456789012.dkr.ecr… placeholder that used to
+      # be inlined in the deploy step below — an account id that belongs to
+      # nobody and would have pulled images from a registry that does not exist.
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+        id: login-ecr
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name muni-cluster --region af-south-1
+      - name: Apply Kustomize
+        run: kubectl apply -k backend/infrastructure/kubernetes/overlays/production -n muni-prod
+      - name: Update Deployments
+        id: rollout
+        run: |
+          set -uo pipefail
+          IMAGE_TAG=${{ github.ref_name }}
+          ECR_REGISTRY="${{ steps.login-ecr.outputs.registry }}"
+          SERVICES="api-gateway auth-service product-service order-service payment-service shipping-service notification-service analytics-service search-service inventory-service review-service currency-service tax-service discount-service wishlist-service cart-service media-service fraud-service return-service dispute-service marketplace-service fulfillment-service checkout-service"
+          echo "services=$SERVICES" >> "$GITHUB_OUTPUT"
+
+          for service in $SERVICES; do
+            kubectl set image deployment/$service $service=$ECR_REGISTRY/muni/$service:$IMAGE_TAG -n muni-prod
+          done
+
+          for service in $SERVICES; do
+            if ! kubectl rollout status deployment/$service -n muni-prod --timeout=600s; then
+              echo "::error::Rollout failed for $service"
+              exit 1
+            fi
+          done
+
+      # ── Post-deploy health gate ───────────────────────────────────────────
+      #
+      # `kubectl rollout status` above only proves the pods reached Ready. That
+      # is a liveness check on a process, not a statement that the platform
+      # works: a bad env var, a migration that half-applied, an upstream the new
+      # build cannot reach — all of those produce healthy pods serving errors.
+      #
+      # So this checks three distinct things, and its failure is what triggers
+      # the rollback below:
+      #
+      #   /health/live   — the process is up (what rollout status already knew)
+      #   /health/ready  — its dependencies are up; this is the one that catches
+      #                    a database or Redis the new build cannot reach
+      #   a real read    — the request path end to end, through the gateway's
+      #                    auth, rate limiting and proxy, into a service
+      #
+      # Retried rather than checked once: pods pass readiness before caches are
+      # warm and before every replica is rotated, so a single curl immediately
+      # after a rollout tests timing as much as health.
+      # The gate that decides whether the release stays. Its logic lives in
+      # scripts/ rather than inline here so it can be tested — shell embedded in
+      # YAML cannot be, and this is the path you least want to discover is
+      # broken during an incident. See scripts/__tests__/deploy-rollback.test.sh.
+      - name: Post-deploy health check
+        id: health
+        run: ./scripts/deploy-health-check.sh "https://api.muni.ug"
+
+      # ── Automatic rollback ────────────────────────────────────────────────
+      #
+      # Runs when EITHER the rollout or the health gate failed. Previously the
+      # rollback lived inside the rollout step, so it covered only the first of
+      # those: a deploy whose pods came up healthy and whose smoke test then
+      # failed was left running in production while the job went red.
+      #
+      # `rollout undo` is a no-op on a Deployment that was never updated, so
+      # rolling every service back is safe even when only one was bad — and it
+      # is the right call regardless, because a partially-rolled-back fleet is a
+      # version-skew problem on top of an outage.
+      - name: Roll back on failure
+        if: failure() && steps.rollout.outcome != 'skipped'
+        env:
+          K8S_NAMESPACE: muni-prod
+        run: ./scripts/deploy-rollback.sh "${{ steps.rollout.outputs.services }}"
+
+      # Paged only on a real production failure, and only after the automatic
+      # rollback has had its go — so the human who wakes up is told what already
+      # happened rather than discovering it.
+      - name: Alert on-call
+        if: failure()
+        run: |
+          if [ -z "${{ secrets.ONCALL_WEBHOOK_URL }}" ]; then
+            echo "::warning::ONCALL_WEBHOOK_URL is not configured — no alert sent."
+            exit 0
+          fi
+          curl -fsS -X POST "${{ secrets.ONCALL_WEBHOOK_URL }}" \
+            -H 'Content-Type: application/json' \
+            -d @- <<JSON || echo "::warning::Alert delivery failed"
+          {
+            "routing_key": "${{ secrets.ONCALL_ROUTING_KEY }}",
+            "event_action": "trigger",
+            "dedup_key": "muni-prod-deploy-${{ github.ref_name }}",
+            "payload": {
+              "summary": "MUNI production deploy ${{ github.ref_name }} FAILED — automatic rollback attempted",
+              "severity": "critical",
+              "source": "github-actions",
+              "component": "cd-production",
+              "custom_details": {
+                "tag": "${{ github.ref_name }}",
+                "rollout": "${{ steps.rollout.outcome }}",
+                "health_check": "${{ steps.health.outcome }}",
+                "run_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+              }
+            }
+          }
+          JSON
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          generate_release_notes: true

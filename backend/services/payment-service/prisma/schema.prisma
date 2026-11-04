@@ -1,0 +1,288 @@
+// ─── Prisma Schema — MUNI Payment Service ─────────────────────────────────────
+//
+// Every model here replaces a `new Map()` that previously lived in the Node
+// process heap. That arrangement lost every payment intent, escrow hold, vendor
+// balance and payout record on restart, and made running a second replica
+// unsafe: two instances would each hold a different view of the same balance.
+//
+// Money columns are Decimal, never Float. UGX amounts are whole shillings, but
+// exchange-rate conversion and commission splits produce fractions, and binary
+// floating point cannot represent them exactly — a rounding drift of a few
+// cents per transaction is a reconciliation failure at volume.
+//
+// Run `npx prisma migrate dev --name <name>` after any change to this file.
+
+// Generate into this service rather than the hoisted node_modules/@prisma/client,
+// which every Prisma service in the monorepo would otherwise overwrite in turn —
+// leaving only the last service to run `prisma generate` with a usable client.
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Payment transactions ─────────────────────────────────────────────────────
+
+enum PaymentStatus {
+  pending
+  processing
+  completed
+  failed
+  refunded
+}
+
+enum PaymentMethod {
+  mtn_momo
+  airtel
+  card
+  visa_card
+  pesapal
+  flutterwave
+  cod
+}
+
+model PaymentTransaction {
+  paymentId String @id @map("payment_id")
+
+  /// Our own idempotent handle for the payment, and the key every provider
+  /// webhook arrives with. Unique because a duplicate reference would let a
+  /// replayed webhook settle the wrong transaction.
+  reference String @unique
+
+  orderId  String        @map("order_id")
+  amount   Decimal       @db.Decimal(18, 4)
+  currency String        @db.VarChar(3)
+  method   PaymentMethod
+  status   PaymentStatus @default(pending)
+
+  phoneNumber String? @map("phone_number")
+  checkoutUrl String? @map("checkout_url")
+
+  /// Caller-supplied idempotency key. Unique so a retried initiate request
+  /// returns the original transaction instead of charging the customer twice.
+  idempotencyKey String? @unique @map("idempotency_key")
+
+  rawPayload Json?     @map("raw_payload")
+  paidAt     DateTime? @map("paid_at")
+
+  // ── Mobile money provider integration ──
+  provider              String?
+  providerReferenceId   String? @map("provider_reference_id")
+  providerTransactionId String? @map("provider_transaction_id")
+  providerStatus        String? @map("provider_status")
+  failureReason         String? @map("failure_reason")
+  amountUGX             Decimal? @map("amount_ugx") @db.Decimal(18, 4)
+  exchangeRate          Decimal? @map("exchange_rate") @db.Decimal(18, 8)
+  pollAttempts          Int      @default(0) @map("poll_attempts")
+
+  // ── Card integration ──
+  //
+  // Deliberately no PAN, expiry or CVC: PCI-DSS SAQ A-EP scope requires those
+  // never reach this backend. `card` holds only the client-side token plus the
+  // last4/brand derived from it.
+  card                    Json?   @db.JsonB
+  threeDSecureRedirectUrl String? @map("three_d_secure_redirect_url")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([orderId])
+  @@index([status, providerStatus])
+  @@map("payment_transactions")
+}
+
+// ─── Webhook idempotency ──────────────────────────────────────────────────────
+
+/// Replaces the in-process `processedWebhookIds` Set in webhook.controller.ts.
+/// This one is not merely a durability nicety: without it, a provider retrying
+/// a delivery after a restart re-runs processPaymentSplit and credits the
+/// vendor twice for a single payment.
+model ProcessedWebhook {
+  eventId     String   @id @map("event_id")
+  provider    String
+  receivedAt  DateTime @default(now()) @map("received_at")
+
+  @@map("processed_webhooks")
+}
+
+// ─── Escrow ───────────────────────────────────────────────────────────────────
+
+enum EscrowStatus {
+  in_escrow
+  dispute_hold
+  released_to_vendor
+  refunded_to_buyer
+}
+
+model EscrowHold {
+  id String @id @default(uuid())
+
+  /// One hold per (order, vendor) — NOT one per order.
+  ///
+  /// `orderId` was `@unique`, which made a multi-vendor cart impossible to
+  /// represent: the single row named one seller and carried the whole cart's
+  /// value, so every other seller in the basket was invisible to the ledger
+  /// and the named one appeared owed money that was not theirs.
+  ///
+  /// The compound key still gives idempotency — a retried payment upserts the
+  /// same (order, vendor) row rather than doubling a vendor's holdings.
+  orderId    String  @map("order_id")
+  /// Set when the caller knows the sub-order. Escrow is created at payment
+  /// time, which in the checkout saga runs BEFORE order creation, so it is
+  /// often null and (orderId, vendorId) is the identifying key.
+  subOrderId String? @map("sub_order_id")
+  vendorId   String  @map("vendor_id")
+  buyerId    String  @map("buyer_id")
+
+  amountUGX Decimal      @map("amount_ugx") @db.Decimal(18, 4)
+  status    EscrowStatus @default(in_escrow)
+
+  /// 7 days after delivery.
+  autoReleaseDate DateTime  @map("auto_release_date")
+  holdReason      String?   @map("hold_reason")
+  releasedAt      DateTime? @map("released_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([orderId, vendorId])
+  /// Every read path is "all holds for this order" — release, freeze, status
+  /// and the vendor split all fan out from an orderId.
+  @@index([orderId])
+  @@index([vendorId])
+  @@index([status])
+  @@map("escrow_holds")
+}
+
+// ─── Vendor balances and ledger ───────────────────────────────────────────────
+
+/// The authoritative vendor money position. Previously a Map inside
+/// split.service.ts, which meant two replicas could each approve a payout
+/// against the same funds.
+model VendorBalance {
+  vendorId         String  @id @map("vendor_id")
+  availableBalance Decimal @default(0) @map("available_balance") @db.Decimal(18, 4)
+  pendingBalance   Decimal @default(0) @map("pending_balance") @db.Decimal(18, 4)
+  currency         String  @default("UGX") @db.VarChar(3)
+
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("vendor_balances")
+}
+
+enum LedgerEntryStatus {
+  pending
+  available
+  paid_out
+  /// Credited, then taken back because the order was refunded.
+  reversed
+}
+
+model VendorLedgerEntry {
+  id            String  @id @default(uuid())
+  transactionId String  @map("transaction_id")
+  orderId       String  @map("order_id")
+  subOrderId    String? @map("sub_order_id")
+  vendorId      String  @map("vendor_id")
+
+  grossAmount     Decimal @map("gross_amount") @db.Decimal(18, 4)
+  platformFee     Decimal @map("platform_fee") @db.Decimal(18, 4)
+  netVendorAmount Decimal @map("net_vendor_amount") @db.Decimal(18, 4)
+
+  status LedgerEntryStatus @default(pending)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  /// A sub-order may only be credited to a vendor once. This is the database
+  /// half of the double-credit guard; the other half is ProcessedWebhook.
+  @@unique([subOrderId, vendorId])
+  @@index([vendorId, status])
+  @@map("vendor_ledger_entries")
+}
+
+model PlatformCommissionEntry {
+  id         String  @id @default(uuid())
+  orderId    String  @map("order_id")
+  subOrderId String? @map("sub_order_id")
+  vendorId   String  @map("vendor_id")
+
+  grossAmount      Decimal @map("gross_amount") @db.Decimal(18, 4)
+  commissionRate   Decimal @map("commission_rate") @db.Decimal(6, 4)
+  commissionAmount Decimal @map("commission_amount") @db.Decimal(18, 4)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([vendorId])
+  @@map("platform_commission_entries")
+}
+
+// ─── Payouts ──────────────────────────────────────────────────────────────────
+
+enum PayoutMethod {
+  mobile_money
+  bank_transfer
+}
+
+/// A seller's withdrawal request moves pending → processing → completed | failed
+/// once an admin approves it, or pending → rejected if an admin declines. The
+/// two terminal failure states are kept distinct on purpose: `failed` means the
+/// disbursement was attempted and the provider refused it, `rejected` means it
+/// was never attempted because a human said no. Both restore the reserved
+/// balance, but only one is the seller's to fix.
+enum PayoutStatus {
+  pending
+  processing
+  completed
+  failed
+  rejected
+}
+
+enum PayoutRequestedBy {
+  seller
+  system_scheduled
+}
+
+model VendorPayout {
+  id       String  @id
+  vendorId String  @map("vendor_id")
+  amount   Decimal @db.Decimal(18, 4)
+  currency String  @default("UGX") @db.VarChar(3)
+
+  method PayoutMethod
+
+  /// { accountNumber, accountName, bankCode } — shape varies by method, so it
+  /// stays JSON rather than three half-populated columns.
+  destinationAccount Json @map("destination_account") @db.JsonB
+
+  status      PayoutStatus      @default(pending)
+  reference   String            @unique
+  requestedBy PayoutRequestedBy @default(seller) @map("requested_by")
+
+  processedAt   DateTime? @map("processed_at")
+  failureReason String?   @map("failure_reason")
+
+  // ── Admin review ──
+  /// Admin user id that approved or rejected the request, and when. Null while
+  /// the request is still sitting in the pending queue.
+  reviewedBy      String?   @map("reviewed_by")
+  reviewedAt      DateTime? @map("reviewed_at")
+  /// Shown to the seller verbatim, so a rejection is never unexplained.
+  rejectionReason String?   @map("rejection_reason")
+  /// The bank's own reference for a transfer MUNI did not make itself. Set only
+  /// when an admin confirms a bank_transfer payout actually went out, which is
+  /// the only way such a payout reaches `completed`.
+  settlementReference String? @map("settlement_reference")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([vendorId, status])
+  /// The admin withdrawal queue reads by status, newest first.
+  @@index([status, createdAt])
+  @@map("vendor_payouts")
+}

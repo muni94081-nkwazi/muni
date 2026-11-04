@@ -1,0 +1,22 @@
+# Global ownership
+*                               @muni/platform-team
+
+# Backend services
+backend/api-gateway/**          @muni/platform-team @muni/backend-team
+backend/services/auth-service/** @muni/platform-team @muni/security-team
+backend/services/payment-service/** @muni/platform-team @muni/payments-team
+backend/services/checkout-service/** @muni/platform-team @muni/checkout-team
+backend/services/fraud-service/** @muni/security-team
+
+# Infrastructure
+backend/infrastructure/terraform/** @muni/infra-team
+backend/infrastructure/kubernetes/** @muni/infra-team
+.github/workflows/**            @muni/infra-team @muni/platform-team
+
+# Frontend
+frontend/**                     @muni/frontend-team
+
+# Security
+backend/shared/security/**      @muni/security-team
+backend/infrastructure/security/** @muni/security-team
+.gitleaks.toml                  @muni/security-team

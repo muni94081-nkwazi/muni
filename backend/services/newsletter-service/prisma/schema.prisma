@@ -1,0 +1,81 @@
+// Generate into this service rather than the hoisted node_modules/@prisma/client,
+// which every Prisma service in the monorepo would otherwise overwrite in turn —
+// leaving only the last service to run `prisma generate` with a usable client.
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SubscriptionStatus {
+  /// Address captured, confirmation not yet completed.
+  PENDING
+  /// Actively subscribed.
+  CONFIRMED
+  /// Unsubscribed by the recipient.
+  UNSUBSCRIBED
+  /// Hard-bounced or complained; never send again.
+  SUPPRESSED
+}
+
+enum SubscriptionSource {
+  FOOTER
+  CHECKOUT
+  ACCOUNT
+  IMPORT
+}
+
+// ─── NewsletterSubscription ─────────────────────────────────────────────────
+//
+// One row per email address. `email` is unique and stored lowercased+trimmed by
+// the service, so "Ada@Example.com " and "ada@example.com" cannot become two
+// subscriptions — resubscribing after an unsubscribe updates this row rather
+// than inserting a second one.
+model NewsletterSubscription {
+  id String @id @default(uuid())
+
+  /// Normalised: lowercased and trimmed before write. Unique so the upsert in
+  /// newsletter.service.ts can key on it and duplicate submissions collapse.
+  email String @unique
+
+  status SubscriptionStatus @default(PENDING)
+  source SubscriptionSource @default(FOOTER)
+
+  /// Set when the subscriber is a signed-in user. Null for anonymous footer
+  /// signups, which is the common case.
+  userId String? @map("user_id")
+
+  /// Market the address was captured in, so a future send can be segmented
+  /// without guessing. Matches the storefront's market codes (e.g. "UG").
+  market String @default("UG")
+
+  locale String @default("en")
+
+  // ── Consent record ───────────────────────────────────────────────────────
+  //
+  // Kept because marketing consent has to be *evidenced*, not merely acted on.
+  // These three columns answer "when did this person agree, from where, and to
+  // what wording" — the questions asked when a complaint arrives.
+  consentAt      DateTime? @map("consent_at")
+  consentIp      String?   @map("consent_ip")
+  consentUserAgent String? @map("consent_user_agent")
+  /// Identifies the exact copy shown next to the input at signup.
+  consentVersion String    @default("footer-v1") @map("consent_version")
+
+  /// Opaque, unguessable token for one-click unsubscribe. Never the row id.
+  unsubscribeToken String @unique @default(uuid()) @map("unsubscribe_token")
+
+  confirmedAt    DateTime? @map("confirmed_at")
+  unsubscribedAt DateTime? @map("unsubscribed_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  /// "who do we send the next campaign to" — the only query that matters at scale.
+  @@index([status, market])
+  @@map("newsletter_subscriptions")
+}

@@ -1,0 +1,93 @@
+// ─── qa-service schema ────────────────────────────────────────────────────────
+//
+// Owns database `muni_qa`. Replaces `questionsStore` and `votesStore` in
+// services/qa.service.ts.
+//
+// Product Q&A is buyer-visible content a seller has answered publicly; losing
+// it on restart discards written answers customers are relying on.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum QuestionStatus {
+  pending
+  answered
+  closed
+}
+
+enum VoteType {
+  helpful
+  not_helpful
+}
+
+model Question {
+  id        String @id
+  productId String @map("product_id")
+  userId    String @map("user_id")
+  userName  String @map("user_name")
+
+  question String
+  status   QuestionStatus
+
+  isFeatured Boolean @default(false) @map("is_featured")
+
+  answers Answer[]
+
+  createdAt DateTime @map("created_at")
+  updatedAt DateTime @map("updated_at")
+
+  // The product page lists a product's questions, newest first.
+  @@index([productId, createdAt])
+  @@index([status])
+  @@map("questions")
+}
+
+model Answer {
+  id         String   @id
+  questionId String   @map("question_id")
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  sellerId        String @map("seller_id")
+  sellerStoreName String @map("seller_store_name")
+  answer          String
+
+  /// Denormalised tallies. Kept as columns rather than counted from Vote on
+  /// every read because they are shown on every product page; Vote is the
+  /// audit trail that makes them defensible.
+  helpfulCount    Int @default(0) @map("helpful_count")
+  notHelpfulCount Int @default(0) @map("not_helpful_count")
+
+  votes QuestionVote[]
+
+  createdAt DateTime @map("created_at")
+  updatedAt DateTime @map("updated_at")
+
+  @@index([questionId])
+  @@index([sellerId])
+  @@map("answers")
+}
+
+model QuestionVote {
+  id       String @id
+  answerId String @map("answer_id")
+  answer   Answer @relation(fields: [answerId], references: [id], onDelete: Cascade)
+
+  userId   String   @map("user_id")
+  voteType VoteType @map("vote_type")
+
+  createdAt DateTime @map("created_at")
+
+  /// One vote per person per answer. votesStore existed for this and was
+  /// never written to, so voteAnswer() incremented the tally every time it
+  /// was called and a single user could inflate an answer without limit.
+  @@unique([answerId, userId])
+  @@index([answerId])
+  @@map("question_votes")
+}

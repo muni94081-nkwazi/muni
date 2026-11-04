@@ -1,0 +1,53 @@
+// ─── fraud-service schema ─────────────────────────────────────────────────────
+//
+// Owns database `muni_fraud`. Replaces the `cases` Map and the `stats` counter
+// object in services/fraud.service.ts.
+//
+// A REVIEW decision means an order was held back for a human to look at. The
+// Map meant a restart silently emptied that queue: the order stays blocked
+// with nobody able to find it, or sails through unreviewed, and either way
+// nothing records that it was ever flagged.
+//
+// Every scored transaction is stored, not just the flagged ones. The old code
+// kept only REVIEW cases and tracked the rest as three integers, so a BLOCK
+// could not be explained afterwards — which is exactly the decision a customer
+// calls to dispute.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum FraudDecision {
+  ALLOW
+  REVIEW
+  BLOCK
+}
+
+model FraudCase {
+  /// One assessment per order. The Map was keyed by orderId, so re-scoring an
+  /// order replaced the previous verdict rather than adding a second row.
+  orderId String @id @map("order_id")
+
+  score    Int
+  decision FraudDecision
+
+  /// Which rules fired, in the order the engine evaluated them.
+  triggeredRules String[] @map("triggered_rules")
+
+  /// Set when a human overrules the engine.
+  reviewedBy String?   @map("reviewed_by")
+  reviewedAt DateTime? @map("reviewed_at")
+
+  createdAt DateTime @map("created_at")
+  updatedAt DateTime @map("updated_at")
+
+  // listCases pulls the review queue; the dashboard counts by decision.
+  @@index([decision, createdAt])
+  @@map("fraud_cases")
+}

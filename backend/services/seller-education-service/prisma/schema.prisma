@@ -1,0 +1,73 @@
+// ─── seller-education-service schema ──────────────────────────────────────────
+//
+// Owns database `muni_seller_education`. Persists what actually changes at
+// runtime: each seller's onboarding progress, the webinar catalogue's attendee
+// counts, and who has registered for what.
+//
+// The course catalogue is deliberately NOT here. `coursesStore` is a read-only
+// content array — getCourses and getCourseById are the only things that touch
+// it, nothing ever writes to it, and a restart therefore loses nothing. It
+// stays a module constant in content/courses.ts, versioned with the code that
+// renders it. Persisting state is the point of this migration; persisting a
+// constant would just be a second place for it to drift.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model SellerProgress {
+  sellerId String @id @map("seller_id")
+
+  onboardingPercentage Int @map("onboarding_percentage")
+
+  /// OnboardingStep[]. A fixed checklist read and written as a whole, never
+  /// queried across sellers, so it stays JSON rather than a fourth table.
+  completedSteps Json @map("completed_steps")
+
+  completedCourseIds String[] @map("completed_course_ids")
+  earnedBadges       String[] @map("earned_badges")
+
+  lastActiveAt String @map("last_active_at")
+
+  @@map("seller_progress")
+}
+
+model Webinar {
+  id      String @id
+  title   String
+  speaker String
+
+  scheduledAt     String @map("scheduled_at")
+  durationMinutes Int    @map("duration_minutes")
+  registrationUrl String @map("registration_url")
+
+  attendeesCount Int @default(0) @map("attendees_count")
+
+  registrations WebinarRegistration[]
+
+  @@map("webinars")
+}
+
+model WebinarRegistration {
+  id        String  @id
+  webinarId String  @map("webinar_id")
+  webinar   Webinar @relation(fields: [webinarId], references: [id], onDelete: Cascade)
+
+  sellerId String @map("seller_id")
+
+  registeredAt DateTime @map("registered_at")
+
+  /// registerForWebinar() used to set `isRegistered` on the shared webinar
+  /// object, so once any seller registered every seller saw themselves as
+  /// registered — and a seller could inflate attendeesCount by clicking twice.
+  /// One row per seller per webinar fixes both.
+  @@unique([webinarId, sellerId])
+  @@index([sellerId])
+  @@map("webinar_registrations")
+}

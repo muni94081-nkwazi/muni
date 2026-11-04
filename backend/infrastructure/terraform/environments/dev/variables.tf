@@ -1,0 +1,14 @@
+variable "aws_region" {
+  type    = string
+  default = "af-south-1"
+}
+
+variable "environment" {
+  type    = string
+  default = "dev"
+}
+
+variable "acm_certificate_arn" {
+  type    = string
+  default = ""
+}

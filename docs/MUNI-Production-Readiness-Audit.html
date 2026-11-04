@@ -1,0 +1,1468 @@
+<title>MUNI Load-Bearing Audit</title>
+<style>
+  /* ── Tokens: light (default) ─────────────────────────────────────────── */
+  :root {
+    --ground:    #F6F8F7;
+    --surface:   #FFFFFF;
+    --panel:     #101A19;
+    --panel-ink: #D7E4E1;
+    --ink:       #101E1C;
+    --ink-soft:  #3C4E4B;
+    --muted:     #61726F;
+    --rule:      #D9E1DF;
+    --rule-firm: #B6C4C1;
+    --accent:    #0A6B60;
+    --accent-dim:#E2EFEC;
+
+    --sev-crit:  #B3261E;
+    --sev-crit-bg:#FBE9E7;
+    --sev-high:  #8A5A00;
+    --sev-high-bg:#FBF0DC;
+    --sev-med:   #2C6B4E;
+    --sev-med-bg:#E4F1EA;
+    --sev-good:  #0A6B60;
+    --sev-good-bg:#E2EFEC;
+
+    --serif: Georgia, "Iowan Old Style", "Source Serif Pro", "Times New Roman", serif;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, sans-serif;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Code", Menlo, Consolas, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:    #0C1312;
+      --surface:   #121C1B;
+      --panel:     #080E0D;
+      --panel-ink: #C8DAD6;
+      --ink:       #E3EDEA;
+      --ink-soft:  #B3C4C0;
+      --muted:     #869A96;
+      --rule:      #22302E;
+      --rule-firm: #344643;
+      --accent:    #45C4B2;
+      --accent-dim:#152A27;
+
+      --sev-crit:  #FF7A6B;
+      --sev-crit-bg:#2C1512;
+      --sev-high:  #E9B655;
+      --sev-high-bg:#2B2110;
+      --sev-med:   #66D2A0;
+      --sev-med-bg:#12271E;
+      --sev-good:  #45C4B2;
+      --sev-good-bg:#152A27;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground:    #0C1312;
+    --surface:   #121C1B;
+    --panel:     #080E0D;
+    --panel-ink: #C8DAD6;
+    --ink:       #E3EDEA;
+    --ink-soft:  #B3C4C0;
+    --muted:     #869A96;
+    --rule:      #22302E;
+    --rule-firm: #344643;
+    --accent:    #45C4B2;
+    --accent-dim:#152A27;
+
+    --sev-crit:  #FF7A6B;
+    --sev-crit-bg:#2C1512;
+    --sev-high:  #E9B655;
+    --sev-high-bg:#2B2110;
+    --sev-med:   #66D2A0;
+    --sev-med-bg:#12271E;
+    --sev-good:  #45C4B2;
+    --sev-good-bg:#152A27;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.6;
+    margin: 0;
+    padding: 0 20px 96px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 860px; margin: 0 auto; }
+
+  /* ── Masthead ─────────────────────────────────────────────────────────── */
+  header.mast {
+    display: flex; flex-direction: column; gap: 14px;
+    padding: 56px 0 24px;
+    border-bottom: 2px solid var(--ink);
+  }
+  .eyebrow {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--muted);
+    display: flex; flex-wrap: wrap; gap: 6px 14px;
+  }
+  h1 {
+    font-family: var(--serif); font-weight: 600;
+    font-size: clamp(34px, 6vw, 52px); line-height: 1.06;
+    letter-spacing: -.02em; margin: 0; text-wrap: balance;
+  }
+  .standfirst {
+    font-size: 18px; color: var(--ink-soft); margin: 0; max-width: 62ch;
+  }
+
+  /* ── Gauge strip ──────────────────────────────────────────────────────── */
+  .gauge {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 1px; background: var(--rule);
+    border: 1px solid var(--rule); margin: 28px 0 8px;
+  }
+  .gauge > div { background: var(--surface); padding: 16px 18px; display: flex; flex-direction: column; gap: 4px; }
+  .gauge .n {
+    font-family: var(--mono); font-size: 30px; font-weight: 600;
+    font-variant-numeric: tabular-nums; line-height: 1;
+  }
+  .gauge .l {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .n.crit { color: var(--sev-crit); }
+  .n.high { color: var(--sev-high); }
+  .n.med  { color: var(--sev-med); }
+  .n.good { color: var(--sev-good); }
+
+  /* ── Section headings ─────────────────────────────────────────────────── */
+  section { margin-top: 64px; }
+  h2 {
+    font-family: var(--serif); font-weight: 600;
+    font-size: clamp(24px, 3.6vw, 32px); line-height: 1.15;
+    letter-spacing: -.015em; margin: 0 0 6px; text-wrap: balance;
+  }
+  .sec-rule { border: 0; border-top: 2px solid var(--ink); margin: 0 0 22px; }
+  .sec-note { color: var(--muted); font-size: 14.5px; margin: 0 0 26px; max-width: 62ch; }
+
+  h3 {
+    font-family: var(--serif); font-weight: 600; font-size: 21px;
+    line-height: 1.25; letter-spacing: -.01em; margin: 0 0 10px; text-wrap: balance;
+  }
+  h4 {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .13em;
+    text-transform: uppercase; color: var(--muted);
+    margin: 22px 0 6px; font-weight: 600;
+  }
+
+  p { margin: 0 0 12px; }
+  p:last-child { margin-bottom: 0; }
+
+  /* ── Finding blocks ───────────────────────────────────────────────────── */
+  .finding {
+    border-top: 1px solid var(--rule-firm);
+    padding: 26px 0 30px;
+  }
+  .finding:first-of-type { border-top: 0; padding-top: 6px; }
+
+  .meta {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    font-family: var(--mono); font-size: 11px; letter-spacing: .07em;
+    text-transform: uppercase; margin-bottom: 9px;
+  }
+  .id {
+    font-weight: 700; padding: 3px 7px; letter-spacing: .08em;
+    color: var(--surface);
+  }
+  .id.crit { background: var(--sev-crit); }
+  .id.high { background: var(--sev-high); }
+  .id.med  { background: var(--sev-med); }
+  :root[data-theme="dark"] .id, :root:not([data-theme="light"]) .id { color: var(--panel); }
+  @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .id { color: #fff; } }
+
+  .tag { padding: 3px 7px; border: 1px solid var(--rule-firm); color: var(--muted); }
+  .tag.effort { border-color: var(--accent); color: var(--accent); }
+
+  dl.qa { margin: 0; display: flex; flex-direction: column; gap: 14px; }
+  dl.qa > div { display: flex; flex-direction: column; gap: 3px; }
+  dt {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .13em;
+    text-transform: uppercase; color: var(--muted); font-weight: 600;
+  }
+  dd { margin: 0; color: var(--ink-soft); }
+  dd strong { color: var(--ink); font-weight: 600; }
+
+  /* ── Code ─────────────────────────────────────────────────────────────── */
+  code {
+    font-family: var(--mono); font-size: .88em;
+    background: var(--accent-dim); color: var(--ink);
+    padding: 1px 4px; border-radius: 2px;
+  }
+  pre {
+    background: var(--panel); color: var(--panel-ink);
+    font-family: var(--mono); font-size: 12.5px; line-height: 1.62;
+    padding: 16px 18px; margin: 12px 0 0;
+    overflow-x: auto; border-left: 3px solid var(--accent);
+  }
+  pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
+  pre .c { color: #6E8A85; font-style: italic; }
+  pre .del { color: #FF8C7E; }
+  pre .add { color: #7FD8A6; }
+
+  .path {
+    font-family: var(--mono); font-size: 12px; color: var(--muted);
+    word-break: break-all;
+  }
+
+  /* ── Lists ────────────────────────────────────────────────────────────── */
+  ul.plain { margin: 8px 0 0; padding-left: 18px; color: var(--ink-soft); }
+  ul.plain li { margin-bottom: 6px; }
+  ul.plain li::marker { color: var(--accent); }
+
+  /* ── Tables ───────────────────────────────────────────────────────────── */
+  .scroll { overflow-x: auto; margin-top: 14px; border: 1px solid var(--rule); }
+  table { border-collapse: collapse; width: 100%; min-width: 620px; background: var(--surface); }
+  th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--rule); vertical-align: top; font-size: 14.5px; }
+  th {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--muted); font-weight: 600;
+    background: var(--ground); border-bottom: 1px solid var(--rule-firm);
+  }
+  tr:last-child td { border-bottom: 0; }
+  td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td.sev { font-family: var(--mono); font-size: 11px; font-weight: 700; white-space: nowrap; }
+  td.sev.crit { color: var(--sev-crit); }
+  td.sev.high { color: var(--sev-high); }
+  td.sev.med  { color: var(--sev-med); }
+
+  /* ── Good-practice notes ──────────────────────────────────────────────── */
+  .win { border-top: 1px solid var(--rule); padding: 16px 0; }
+  .win:first-of-type { border-top: 0; }
+  .win h3 { font-size: 17px; margin-bottom: 4px; color: var(--sev-good); }
+  .win p { color: var(--ink-soft); font-size: 15px; }
+
+  /* ── Phase blocks ─────────────────────────────────────────────────────── */
+  .phase { border-top: 1px solid var(--rule-firm); padding: 22px 0 8px; }
+  .phase-head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 4px; }
+  .phase-n {
+    font-family: var(--mono); font-size: 12px; font-weight: 700;
+    letter-spacing: .1em; color: var(--accent);
+  }
+  .phase h3 { margin: 0; }
+  .phase-when { font-family: var(--mono); font-size: 11px; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; }
+
+  footer {
+    margin-top: 72px; padding-top: 20px; border-top: 2px solid var(--ink);
+    font-family: var(--mono); font-size: 11.5px; color: var(--muted);
+    letter-spacing: .05em; line-height: 1.8;
+  }
+
+  a { color: var(--accent); }
+  a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+</style>
+
+<div class="wrap">
+
+<header class="mast">
+  <div class="eyebrow">
+    <span>MUNI Marketplace</span><span>·</span>
+    <span>Backend production-readiness audit</span><span>·</span>
+    <span>32 services · 615 TS files</span><span>·</span>
+    <span>branch feature/footer-nav-and-order-logistics-batch</span>
+  </div>
+  <h1>What breaks when the traffic arrives</h1>
+  <p class="standfirst">An audit of the MUNI backend against the e-commerce roadmap standards, weighted by what actually fails under load. Every finding below is anchored to a specific file and line in this repository.</p>
+</header>
+
+<div class="gauge">
+  <div><span class="n crit">9</span><span class="l">Critical</span></div>
+  <div><span class="n high">11</span><span class="l">High</span></div>
+  <div><span class="n med">7</span><span class="l">Medium</span></div>
+  <div><span class="n good">6</span><span class="l">Done well</span></div>
+  <div><span class="n">6/32</span><span class="l">Services with a DB</span></div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<section>
+  <h2>Executive summary</h2>
+  <hr class="sec-rule">
+
+  <p>MUNI is two codebases wearing one name. The <strong>platform layer</strong> — API gateway resilience, RabbitMQ topology, Elasticsearch analyzers, Kubernetes manifests, the inventory reservation engine — is genuinely well-built, in places better than what most teams ship. The <strong>commerce layer</strong> underneath it is scaffolding: checkout, payment, escrow, payouts, loyalty and 22 other services hold their entire state in process-local JavaScript <code>Map</code>s and arrays that vanish on restart and are invisible to a second replica.</p>
+
+  <p>The single most urgent item is not a scale problem. The API gateway stamps <code>x-user-id</code> and <code>x-user-roles</code> onto requests from a verified JWT but <strong>never strips those headers when a client sends them directly</strong>, and every downstream service trusts them by design. Any anonymous caller can become <code>ROLE_SUPER_ADMIN</code> with two curl headers. That is a full authentication and authorization bypass, reachable today, on every route in the system.</p>
+
+  <p>Behind that, the checkout saga is a stub that calls an inventory endpoint which does not exist, swallows the failure, marks the step complete, and computes the order total from a client-supplied subtotal. There is no idempotency check anywhere in the money path, while the gateway retries failed <code>POST</code>s three times. Black Friday is not the risk here — the first real customer is.</p>
+
+  <p>The good news is that the hard parts are largely done. The inventory service already implements correct <code>SELECT … FOR UPDATE</code> reservation with TTL expiry; the RabbitMQ layer already has retry, DLQ and Redis idempotency; the search service already has edge-ngram autocomplete. Most of the critical work is <em>connecting</em> these to the commerce path, not inventing them. Realistic path to a safe launch: <strong>2 weeks for the critical set, 6–8 weeks to the full standard.</strong></p>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<section>
+  <h2>Critical — must fix before any deployment</h2>
+  <hr class="sec-rule">
+  <p class="sec-note">These are not "will degrade at scale" items. Each one is exploitable or loses money on day one at ten requests per second.</p>
+
+  <!-- C1 -->
+  <div class="finding">
+    <div class="meta">
+      <span class="id crit">C1</span>
+      <span class="tag">Auth &amp; RBAC</span>
+      <span class="tag">API Gateway</span>
+      <span class="tag effort">4 hours</span>
+    </div>
+    <h3>Client-supplied identity headers are trusted — complete auth bypass</h3>
+    <p class="path">backend/api-gateway/src/middleware/auth.middleware.ts:27–58 · src/utils/proxy.ts:91–95</p>
+
+    <dl class="qa">
+      <div>
+        <dt>Current state</dt>
+        <dd><code>optionalAuth</code> sets <code>x-user-id</code> / <code>x-user-roles</code> <em>only when a JWT verifies</em>. It never deletes them otherwise. <code>requireAuth</code> then short-circuits on line 40 — <code>if (req.headers['x-user-id']) return next()</code> — and <code>requireRole</code> reads roles straight off the same header. <code>callUpstream</code> copies every inbound header to the service verbatim. The design note at line 22 states services deliberately do not re-validate the JWT.</dd>
+      </div>
+      <div>
+        <dt>Failure scenario</dt>
+        <dd>No load required. This request returns the full customer database:</dd>
+      </div>
+    </dl>
+
+<pre><code>curl https://api.muni.ug/api/v1/admin/users \
+  -H "x-user-id: 00000000-0000-0000-0000-000000000000" \
+  -H "x-user-roles: ROLE_SUPER_ADMIN"</code></pre>
+
+    <p style="margin-top:12px">The same two headers let an attacker read any user's orders, confirm any checkout session, approve seller KYC, and — because the rate limiter also keys on <code>x-user-id</code> (rate-limit.middleware.ts:85) — bypass rate limiting entirely by rotating a random UUID per request. The Kubernetes <code>NetworkPolicy</code> does not help: the traffic arrives <em>through</em> the gateway, which forwards it.</p>
+
+    <h4>The fix</h4>
+    <p>Strip the headers unconditionally before anything else reads them, and stop treating their presence as proof of authentication.</p>
+
+<pre><code><span class="c">// backend/api-gateway/src/middleware/auth.middleware.ts</span>
+
+<span class="c">// Runs FIRST in the middleware chain — before logging, rate-limit, routes.</span>
+const SPOOFABLE = ['x-user-id', 'x-user-roles', 'x-user-email', 'x-internal-call'];
+
+export function stripClientIdentity(req, _res, next) {
+  for (const h of SPOOFABLE) delete req.headers[h];
+  next();
+}
+
+export function optionalAuth(req, _res, next) {
+  const identity = readAccessToken(
+    req.header('authorization')?.replace(/^Bearer\s+/i, ''),
+  );
+  if (identity) {
+    req.headers['x-user-id']    = identity.sub;
+    req.headers['x-user-roles'] = identity.roles.join(',');
+  }
+  next();
+}
+
+export function requireAuth(req, res, next) {
+<span class="del">- if (req.headers['x-user-id']) return next();   // ← trusts the client</span>
+<span class="add">+ // optionalAuth already ran on a stripped request, so the header</span>
+<span class="add">+ // is now present only if a JWT actually verified.</span>
+<span class="add">+ if (req.headers['x-user-id']) return next();</span>
+  return res.status(401).json({ /* … */ });
+}</code></pre>
+
+<pre><code><span class="c">// backend/api-gateway/src/app.ts — order matters</span>
+app.use(express.json({ limit: '2mb' }));
+<span class="add">+ app.use(stripClientIdentity);   // ① before ANY consumer of the headers</span>
+app.use(loggingMiddleware);
+app.use(responseTransformer);
+app.use(optionalAuth);
+app.use(metricsMiddleware);
+app.use(rateLimiter());</code></pre>
+
+    <p style="margin-top:12px">Then add defence in depth, because a single stripped header should not be the only thing between the internet and <code>ROLE_SUPER_ADMIN</code>: sign the identity hop. The gateway mints a short-lived internal assertion; services verify it.</p>
+
+<pre><code><span class="c">// backend/shared/utils/internal-identity.ts (new)</span>
+import jwt from 'jsonwebtoken';
+const SECRET = process.env.INTERNAL_IDENTITY_SECRET!;   <span class="c">// no dev fallback</span>
+
+export const signIdentity = (sub: string, roles: string[]) =>
+  jwt.sign({ sub, roles }, SECRET, { expiresIn: '30s', issuer: 'api-gateway' });
+
+export function verifyIdentity(token?: string) {
+  if (!token) return null;
+  try { return jwt.verify(token, SECRET, { issuer: 'api-gateway' }) as
+    { sub: string; roles: string[] }; }
+  catch { return null; }
+}
+
+<span class="c">// Every service's requireAuth then reads x-internal-identity, not x-user-id.</span></code></pre>
+  </div>
+
+  <!-- C2 -->
+  <div class="finding">
+    <div class="meta">
+      <span class="id crit">C2</span>
+      <span class="tag">Checkout</span>
+      <span class="tag">Saga</span>
+      <span class="tag effort">3–4 days</span>
+    </div>
+    <h3>The checkout saga reserves nothing and charges nothing</h3>
+    <p class="path">backend/services/checkout-service/src/services/checkout.service.ts:36–86</p>
+
+    <dl class="qa">
+      <div>
+        <dt>Current state</dt>
+        <dd>Three separate defects compound:
+          <ul class="plain">
+            <li>The reserve call posts to <code>${invUrl}/api/v1/inventory/reserve</code>. The inventory service only routes <code>/api/v1/inventory/<strong>:variantId</strong>/reserve</code> (inventory-service/src/index.ts:76), so this always 404s. A 404 does not throw in <code>fetch</code>, so the <code>catch</code> never fires and line 42 marks <code>RESERVE_INVENTORY</code> as <strong>completed</strong>.</li>
+            <li>It sends <code>{ items: [] }</code> — the cart contents are never transmitted.</li>
+            <li><code>confirmPayment</code> (line 58) never contacts payment-service. It flips <code>status</code> to <code>PAYMENT_CONFIRMED</code> and fabricates an order id. No money moves; no <code>deduct</code> is ever called.</li>
+          </ul>
+        </dd>
+      </div>
+      <div>
+        <dt>Failure scenario</dt>
+        <dd>A flash sale on 50 units sells unbounded quantity — the reservation that would have blocked it silently no-ops. Every order reaches <code>COMPLETED</code> with zero payment collected, and fulfilment ships against stock that does not exist. There is also no compensating action anywhere: <code>cancelCheckout</code> sets a status string and releases nothing.</dd>
+      </div>
+    </dl>
+
+    <h4>The fix</h4>
+    <p>A real orchestrated saga with an explicit compensation stack. Each step registers its undo before the next step runs.</p>
+
+<pre><code><span class="c">// backend/services/checkout-service/src/saga/checkout.saga.ts (new)</span>
+
+type Compensation = () => Promise&lt;void&gt;;
+
+export async function runCheckoutSaga(session: CheckoutSession) {
+  const undo: Compensation[] = [];
+
+  try {
+    <span class="c">// ── 1. Price the cart SERVER-SIDE (never trust client totals) ──</span>
+    const priced = await pricing.priceCart(session.userId, session.cartId);
+    session.subtotal = priced.subtotal;
+    session.total    = priced.total;
+
+    <span class="c">// ── 2. Reserve every line, one call per variant ──</span>
+    for (const line of priced.items) {
+      const r = await http.post(
+        `${INVENTORY_URL}/api/v1/inventory/${line.variantId}/reserve`,
+        { quantity: line.quantity, sessionId: session.id, userId: session.userId },
+      );
+      if (r.status === 409) throw new OutOfStockError(line.variantId);
+      if (!r.ok)            throw new StepFailedError('RESERVE_INVENTORY');
+
+      const reservationId = r.data.reservationId;
+      undo.push(() => http.post(
+        `${INVENTORY_URL}/api/v1/inventory/${line.variantId}/release`,
+        { reservationId },
+      ));
+    }
+
+    <span class="c">// ── 3. Charge, keyed to the session so a retry cannot double-charge ──</span>
+    const payment = await http.post(`${PAYMENT_URL}/api/v1/payments`, {
+      orderId:        session.id,
+      amount:         session.total,
+      currency:       priced.currency,
+      method:         session.paymentMethod,
+      idempotencyKey: `checkout:${session.id}`,          <span class="c">// ← see C4</span>
+    });
+    if (!payment.ok) throw new StepFailedError('PAYMENT');
+    undo.push(() => http.post(`${PAYMENT_URL}/api/v1/payments/${payment.data.paymentId}/refund`));
+
+    <span class="c">// ── 4. Create the order, then deduct against the reservations ──</span>
+    const order = await http.post(`${ORDER_URL}/api/v1/orders`, {
+      userId: session.userId, items: priced.items, total: session.total,
+      idempotencyKey: `order:${session.id}`,
+    });
+    if (!order.ok) throw new StepFailedError('CREATE_ORDER');
+
+    for (const line of priced.items) {
+      await http.post(`${INVENTORY_URL}/api/v1/inventory/${line.variantId}/deduct`,
+        { quantity: line.quantity, reservationId: line.reservationId });
+    }
+
+    session.status  = 'COMPLETED';
+    session.orderId = order.data.id;
+    return session;
+
+  } catch (err) {
+    <span class="c">// Compensate in reverse order; never let an undo failure mask the cause.</span>
+    for (const step of undo.reverse()) {
+      await step().catch((e) =&gt; logger.error('compensation failed', {
+        sessionId: session.id, error: e.message,
+      }));
+    }
+    session.status        = 'FAILED';
+    session.failureReason = (err as Error).message;
+    throw err;
+  }
+}</code></pre>
+
+    <p style="margin-top:12px">Reservations already expire on their own — <code>InventoryReservation.expiresAt</code> is indexed and <code>expiry.worker.ts</code> sweeps them — so a crashed orchestrator self-heals after the 15-minute TTL. Enable that worker; it is currently commented out at <code>inventory-service/src/index.ts:9</code>.</p>
+  </div>
+
+  <!-- C3 -->
+  <div class="finding">
+    <div class="meta">
+      <span class="id crit">C3</span>
+      <span class="tag">Checkout</span>
+      <span class="tag">Pricing</span>
+      <span class="tag effort">4 hours</span>
+    </div>
+    <h3>The customer sets their own price</h3>
+    <p class="path">backend/services/checkout-service/src/services/checkout.service.ts:23, 32–34</p>
+
+    <dl class="qa">
+      <div>
+        <dt>Current state</dt>
+        <dd><code>subtotal: data.subtotal || 100</code> takes the subtotal straight from the request body. Shipping and tax are hardcoded to 10 and 5. The total the customer pays is whatever they posted.</dd>
+      </div>
+      <div>
+        <dt>Failure scenario</dt>
+        <dd><code>POST /api/v1/checkout/initiate</code> with <code>{"subtotal": 1}</code> buys anything in the catalogue for 16 currency units. No load, no race, no timing — one request. This will be found by the first person who opens devtools.</dd>
+      </div>
+      <div>
+        <dt>The fix</dt>
+        <dd>Never accept money amounts from the client. Read the cart server-side by <code>userId</code>, resolve current prices from product-service, then call tax-service and shipping-service for the real components. The <code>cartSnapshot</code> field should hold a server-computed snapshot written at initiate time, not a client payload. This is step 1 of the saga in C2.</dd>
+      </div>
+    </dl>
+  </div>
+
+  <!-- C4 -->
+  <div class="finding">
+    <div class="meta">
+      <span class="id crit">C4</span>
+      <span class="tag">Idempotency</span>
+      <span class="tag">Payments</span>
+      <span class="tag effort">1–2 days</span>
+    </div>
+    <h3>No idempotency in the money path — while the gateway retries POSTs three times</h3>
+    <p class="path">backend/services/payment-service/src/services/gateway.service.ts:91 · backend/api-gateway/src/utils/proxy.ts:65–72</p>
+
+    <dl class="qa">
+      <div>
+        <dt>Current state</dt>
+        <dd><code>idempotencyKey</code> is accepted by the payment controller and written onto the transaction object — and never read again. There is no lookup, no store, no uniqueness constraint. Meanwhile the gateway wraps <em>every</em> request, including <code>POST /checkout</code> and <code>POST /payments</code>, in <code>withRetry({ maxAttempts: 3 })</code> and treats any 5xx as retryable.</dd>
+      </div>
+      <div>
+        <dt>Failure scenario</dt>
+        <dd>Payment-service takes 9 seconds under load. The gateway's 8-second <code>AbortController</code> fires, the retry wrapper fires twice more — three MTN MoMo collection requests, three PIN prompts, three debits, one order. At 100,000 checkouts with a 2% timeout rate that is 2,000 customers double- or triple-charged, and every one of them is a chargeback plus a support ticket. The Redis idempotency guard that would prevent this already exists at <code>infrastructure/rabbitmq/idempotency.ts</code> — it is only wired into message consumers, not HTTP.</dd>
+      </div>
+    </dl>
+
+    <h4>The fix — part 1: stop retrying non-idempotent methods</h4>
+<pre><code><span class="c">// backend/api-gateway/src/utils/proxy.ts</span>
+const RETRY_SAFE = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+const attempts = RETRY_SAFE.has(req.method) ? 3
+  : req.header('idempotency-key') ? 3      <span class="c">// safe: key makes it replayable</span>
+  : 1;                                      <span class="c">// unsafe: never auto-retry</span>
+
+upstream = await bulkhead.call(() =&gt;
+  breaker.call(() =&gt;
+    withRetry(() =&gt; callUpstream(req, target),
+      { maxAttempts: attempts, baseDelayMs: 1_000, maxDelayMs: 4_000 })));</code></pre>
+
+    <h4>The fix — part 2: an idempotency middleware</h4>
+    <p>Redis <code>SET NX</code> claims the key; the completed response is written back under the same key so a replay returns the original result rather than re-executing.</p>
+
+<pre><code><span class="c">// backend/shared/http/idempotency.middleware.ts (new)</span>
+import { createHash } from 'node:crypto';
+
+const TTL_SEC     = 24 * 60 * 60;   <span class="c">// 24h — outlives any client retry window</span>
+const IN_FLIGHT   = 'IN_FLIGHT';
+
+export function idempotent(redis: RedisClient) {
+  return async (req, res, next) =&gt; {
+    const raw = req.header('idempotency-key');
+    if (!raw) return res.status(400).json({
+      error: { code: 'IDEMPOTENCY_KEY_REQUIRED',
+               message: 'Send an Idempotency-Key header with this request.' } });
+
+    <span class="c">// Scope to the user so key collisions across accounts are impossible.</span>
+    const key  = `idem:${req.headers['x-user-id']}:${raw}`;
+    <span class="c">// Fingerprint the body: same key + different body = client bug, not a retry.</span>
+    const hash = createHash('sha256').update(JSON.stringify(req.body)).digest('hex');
+
+    const claimed = await redis.set(key, `${IN_FLIGHT}:${hash}`, { NX: true, EX: TTL_SEC });
+
+    if (!claimed) {
+      const stored = await redis.get(key);
+      const [state, storedHash] = stored!.split(/:(.+)/);
+
+      if (state === IN_FLIGHT) {
+        if (storedHash !== hash) return res.status(422).json({
+          error: { code: 'IDEMPOTENCY_KEY_REUSED',
+                   message: 'This key was already used with a different request body.' } });
+        res.setHeader('Retry-After', '2');
+        return res.status(409).json({
+          error: { code: 'REQUEST_IN_PROGRESS',
+                   message: 'The original request is still processing. Retry shortly.' } });
+      }
+      <span class="c">// Completed — replay the stored response verbatim.</span>
+      const done = JSON.parse(stored!.slice(state.length + 1));
+      res.setHeader('Idempotent-Replay', 'true');
+      return res.status(done.status).json(done.body);
+    }
+
+    <span class="c">// First caller: capture the response so replays can be served from it.</span>
+    const json = res.json.bind(res);
+    res.json = (body) =&gt; {
+      if (res.statusCode &lt; 500) {
+        redis.set(key, `DONE:${JSON.stringify({ status: res.statusCode, body })}`,
+                  { EX: TTL_SEC }).catch(() =&gt; {});
+      } else {
+        redis.del(key).catch(() =&gt; {});   <span class="c">// 5xx: let the client genuinely retry</span>
+      }
+      return json(body);
+    };
+    next();
+  };
+}</code></pre>
+
+<pre><code><span class="c">// Apply to every state-changing money route.</span>
+router.post('/checkout/initiate',        requireAuth, idempotent(redis), initiateCheckout);
+router.post('/checkout/:id/confirm',     requireAuth, idempotent(redis), confirmPayment);
+router.post('/api/v1/payments',          requireAuth, idempotent(redis), initiatePayment);</code></pre>
+
+    <p style="margin-top:12px">Load headroom: at 100,000 checkouts these are two Redis round-trips each — roughly 200k ops against a store that handles millions per second. The idempotency layer is not the bottleneck; set <code>maxmemory-policy noeviction</code> on that Redis so keys are never evicted early, and give it its own instance separate from the cache.</p>
+
+    <p>Separately, pass the key through to the provider. <code>mtn-momo.driver.ts</code> and <code>airtel-money.driver.ts</code> should send <code>X-Reference-Id</code> derived from the stable <code>reference</code>, not a fresh <code>crypto.randomBytes</code> per attempt (gateway.service.ts:57).</p>
+  </div>
+
+  <!-- C5 -->
+  <div class="finding">
+    <div class="meta">
+      <span class="id crit">C5</span>
+      <span class="tag">Persistence</span>
+      <span class="tag">Scalability</span>
+      <span class="tag effort">3–4 weeks</span>
+    </div>
+    <h3>26 of 32 services have no database — including every service that touches money</h3>
+    <p class="path">checkout.service.ts:5 · payment-service/src/services/{escrow,split,payout}.service.ts · +23 more</p>
+
+    <dl class="qa">
+      <div>
+        <dt>Current state</dt>
+        <dd>Only auth, user, product, container, order and inventory persist anything. Everything else uses module-level state. The money-critical ones:
+          <ul class="plain">
+            <li><code>checkout.service.ts:5</code> — <code>const sessions: CheckoutSession[] = []</code></li>
+            <li><code>payment/escrow.service.ts:5</code> — the escrow ledger, in a <code>Map</code></li>
+            <li><code>payment/split.service.ts:9–11</code> — vendor balances, ledger entries, platform commissions</li>
+            <li><code>payment/payout.service.ts:11</code> — vendor payouts</li>
+            <li><code>payment/index.ts:11</code> and <code>consumers/order.consumer.ts:12</code> — payments and payment intents</li>
+          </ul>
+        </dd>
+      </div>
+      <div>
+        <dt>Failure scenario</dt>
+        <dd>Three independent failures, and the HPA guarantees all three. <strong>(a)</strong> <code>minReplicas: 2</code> means a customer who initiates checkout on pod A and confirms on pod B gets <code>404 Session not found</code> — roughly half of all checkouts fail immediately. <strong>(b)</strong> Any restart, rollout or OOM-kill erases every in-flight order, the entire escrow ledger and all unpaid vendor balances, with no recovery path. <strong>(c)</strong> <code>sessions</code> is an array that is only ever pushed to — a slow memory leak that ends in an OOM-kill, which triggers (b).</dd>
+      </div>
+      <div>
+        <dt>The fix</dt>
+        <dd>Triage rather than boil the ocean. <strong>Tier 1 (must persist before launch):</strong> checkout, payment, escrow, split, payout, fulfillment, dispute, return, loyalty. <strong>Tier 2 (can stay ephemeral briefly):</strong> pricing, advertising, qa, container, fraud. <strong>Tier 3 (legitimately ephemeral):</strong> chat presence, analytics counters — these already have a Redis fallback and derive from event streams.</dd>
+      </div>
+    </dl>
+
+    <p>Checkout sessions specifically belong in Redis, not Postgres — they are short-lived, TTL-bounded, and read once:</p>
+
+<pre><code><span class="c">// backend/services/checkout-service/src/repositories/session.repository.ts (new)</span>
+const TTL_SEC = 15 * 60;                        <span class="c">// mirrors the reservation TTL</span>
+const key = (id: string) =&gt; `checkout:session:${id}`;
+
+export const sessionRepo = {
+  async save(s: CheckoutSession) {
+    await redis.setEx(key(s.id), TTL_SEC, JSON.stringify(s));
+    <span class="c">// Secondary index so getHistory() never scans the keyspace.</span>
+    await redis.zAdd(`checkout:user:${s.userId}`, { score: Date.now(), value: s.id });
+    await redis.expire(`checkout:user:${s.userId}`, TTL_SEC);
+  },
+
+  async find(id: string): Promise&lt;CheckoutSession | null&gt; {
+    const raw = await redis.get(key(id));
+    return raw ? JSON.parse(raw) : null;
+  },
+};
+
+<span class="c">// Completed sessions get written to Postgres/Mongo as an immutable audit record;</span>
+<span class="c">// the Redis copy is allowed to expire.</span></code></pre>
+
+    <p style="margin-top:12px">Escrow, splits and payouts are financial records and need a real ledger table with an append-only shape and a monetary type — <code>DECIMAL</code>/<code>BIGINT</code> minor units, never JavaScript <code>number</code>, which loses precision above 2<sup>53</sup> UGX minor units.</p>
+  </div>
+
+  <!-- C6 -->
+  <div class="finding">
+    <div class="meta">
+      <span class="id crit">C6</span>
+      <span class="tag">Authorization</span>
+      <span class="tag">IDOR</span>
+      <span class="tag effort">3 hours</span>
+    </div>
+    <h3>Any logged-in user can read and confirm any other user's checkout</h3>
+    <p class="path">backend/services/checkout-service/src/controllers/checkout.controller.ts:11–29</p>
+
+    <dl class="qa">
+      <div>
+        <dt>Current state</dt>
+        <dd><code>getSession</code>, <code>confirmPayment</code> and <code>cancelCheckout</code> look the session up by <code>req.params.sessionId</code> and return or mutate it. None of them compares <code>session.userId</code> to <code>res.locals.userId</code>. <code>requireAuth</code> proves the caller is <em>a</em> user, not <em>the</em> user.</dd>
+      </div>
+      <div>
+        <dt>Failure scenario</dt>
+        <dd>Session ids are UUIDv4 so they are not guessable by brute force — but they leak through logs, referrer headers, support tickets and the browser history of a shared device. Given one, an attacker reads the victim's full cart, shipping address and phone number, and can cancel their order mid-purchase. Combined with C1, no login is needed at all.</dd>
+      </div>
+      <div>
+        <dt>The fix</dt>
+        <dd>Ownership checks belong in the service layer, not the controller, so no future caller can skip them.</dd>
+      </div>
+    </dl>
+
+<pre><code><span class="c">// checkout.service.ts — take the actor on every read/mutate</span>
+async getSession(id: string, actorId: string, actorRoles: string[]) {
+  const s = await sessionRepo.find(id);
+  if (!s) throw new NotFoundError('Checkout session not found');
+
+  const isOwner = s.userId === actorId;
+  const isStaff = actorRoles.includes('ROLE_ADMIN') || actorRoles.includes('ROLE_SUPER_ADMIN');
+
+  <span class="c">// 404 rather than 403 — a 403 confirms the id exists.</span>
+  if (!isOwner &amp;&amp; !isStaff) throw new NotFoundError('Checkout session not found');
+  return s;
+}</code></pre>
+
+    <p style="margin-top:12px">Audit the same pattern across order-service, payment-service, return-service and dispute-service — every <code>findById</code> reached from an HTTP route needs the actor threaded through it.</p>
+  </div>
+
+  <!-- C7 -->
+  <div class="finding">
+    <div class="meta">
+      <span class="id crit">C7</span>
+      <span class="tag">Auth</span>
+      <span class="tag">Secrets</span>
+      <span class="tag effort">6 hours</span>
+    </div>
+    <h3>JWT signing secrets fall back to a hardcoded string committed to the repo</h3>
+    <p class="path">backend/shared/utils/token.ts:11–14</p>
+
+    <dl class="qa">
+      <div>
+        <dt>Current state</dt>
+        <dd><code>process.env.JWT_ACCESS_SECRET ?? 'muni-dev-access-secret-change-me'</code>. If the env var is missing or misspelled in any environment, the service starts happily and signs production tokens with a public string. Access tokens live 1 hour and carry no <code>jti</code>, so nothing can revoke them; logout only clears the refresh cookie.</dd>
+      </div>
+      <div>
+        <dt>Failure scenario</dt>
+        <dd>One missing secret in the Kubernetes <code>Secret</code> manifest and anyone reading this repository can forge a <code>ROLE_SUPER_ADMIN</code> token that no rotation can invalidate for an hour. Separately, a compromised or fired admin keeps working access for the full hour after you disable their account, because <code>readAccessToken</code> only checks the signature and expiry — never whether the user still exists.</dd>
+      </div>
+    </dl>
+
+    <h4>The fix</h4>
+<pre><code><span class="c">// backend/shared/utils/token.ts</span>
+<span class="del">- const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET ?? 'muni-dev-access-secret-change-me';</span>
+<span class="add">+ function required(name: string): string {</span>
+<span class="add">+   const v = process.env[name];</span>
+<span class="add">+   if (!v || v.length &lt; 32) {</span>
+<span class="add">+     throw new Error(`${name} must be set to at least 32 characters. Refusing to start.`);</span>
+<span class="add">+   }</span>
+<span class="add">+   return v;</span>
+<span class="add">+ }</span>
+<span class="add">+ const ACCESS_SECRET = required('JWT_ACCESS_SECRET');</span>
+
+<span class="c">// Short access tokens + a jti so revocation is possible at all.</span>
+const ACCESS_EXPIRES = process.env.JWT_ACCESS_EXPIRES_IN ?? '15m';
+
+export function createAccessToken(userId: string, roles: string[]) {
+  return jwt.sign(
+    { sub: userId, roles, type: 'access', jti: randomUUID() },
+    ACCESS_SECRET,
+    { expiresIn: ACCESS_EXPIRES, issuer: 'muni-auth', audience: 'muni-api' },
+  );
+}</code></pre>
+
+    <p style="margin-top:12px">Add a denylist so logout and account-disable take effect immediately. Keys expire on their own at token expiry, so the set stays small — at 15-minute tokens it holds only the last 15 minutes of revocations:</p>
+
+<pre><code><span class="c">// Gateway checks this once per request; it is a single Redis EXISTS.</span>
+export async function isRevoked(jti: string) { return (await redis.exists(`revoked:${jti}`)) === 1; }
+export async function revoke(jti: string, expUnix: number) {
+  const ttl = Math.max(1, expUnix - Math.floor(Date.now() / 1000));
+  await redis.setEx(`revoked:${jti}`, ttl, '1');
+}</code></pre>
+
+    <p style="margin-top:12px"><strong>On the 100k-user CPU question:</strong> HS256 is HMAC-SHA256, roughly 5µs per verify — around 0.5% of one core at 1,000 rps. It is not your bottleneck and there are no public keys to cache. The real reason to move to RS256/EdDSA is not CPU, it is that a symmetric secret must be shared with every service that verifies it, so any one compromised service can mint admin tokens. With the C1 fix in place, only the gateway verifies, which makes HS256 defensible for now; plan the asymmetric migration for when you add a second verifier.</p>
+  </div>
+
+  <!-- C8 -->
+  <div class="finding">
+    <div class="meta">
+      <span class="id crit">C8</span>
+      <span class="tag">MFA</span>
+      <span class="tag effort">1–2 days</span>
+    </div>
+    <h3>TOTP is implemented but enforced nowhere, and its endpoints are unauthenticated</h3>
+    <p class="path">backend/services/auth-service/src/controllers/totp.controller.ts:8, 80 · src/app.ts:76–78 · src/services/auth.service.ts:116</p>
+
+    <dl class="qa">
+      <div>
+        <dt>Current state</dt>
+        <dd>The TOTP service, repository and Prisma model are all real and correct. But <code>login()</code> never consults them — it returns a full token pair on password alone, for admins included. The three 2FA routes are registered with no auth middleware, and <code>generate2FASecret</code> defaults the subject to a literal: <code>(req.headers['x-user-id'] as string) || res.locals.userId || 'user-123'</code>. <code>authenticate2FA</code> takes <code>userId</code> from the request body.</dd>
+      </div>
+      <div>
+        <dt>Failure scenario</dt>
+        <dd>Two things. Credential stuffing against <code>/api/v1/auth/login</code> reaches admin accounts with nothing but a leaked password — MFA exists in the database but is never checked. And because <code>POST /api/v1/auth/2fa/generate</code> is anonymous, an attacker can overwrite the stored secret for any user id they name, then use their own authenticator to satisfy a verification step you later add.</dd>
+      </div>
+    </dl>
+
+    <h4>The fix</h4>
+<pre><code><span class="c">// auth.service.ts — split login into two steps when 2FA is on</span>
+export async function login(input: { email: string; password: string }, repo = userRepository) {
+  const user = await repo.findByEmail(input.email);
+  const ok = user ? await bcrypt.compare(input.password, user.passwordHash)
+                  : (await bcrypt.hash('dummy', 4), false);
+  if (!user || !ok)  throw Object.assign(new Error('Invalid email or password'), { status: 401 });
+  if (!user.active)  throw Object.assign(new Error('Account is deactivated'),    { status: 403 });
+
+  const twoFactor  = await twoFactorRepository.find(user.id);
+  const isPrivileged = user.roles.some(r =&gt;
+    r === 'ROLE_ADMIN' || r === 'ROLE_SUPER_ADMIN' || r === 'ROLE_SELLER');
+
+  <span class="c">// Admins and sellers MUST enrol — no grandfathering.</span>
+  if (isPrivileged &amp;&amp; !twoFactor?.enabled) {
+    return { status: 'MFA_ENROLLMENT_REQUIRED',
+             enrollmentToken: createMfaChallengeToken(user.id, 'enrol') };
+  }
+
+  if (twoFactor?.enabled) {
+    <span class="c">// A 5-minute single-purpose token. NOT an access token — carries no roles.</span>
+    return { status: 'MFA_REQUIRED',
+             challengeToken: createMfaChallengeToken(user.id, 'verify') };
+  }
+
+  await repo.update(user.id, { lastLoginAt: new Date() });
+  return buildAuthResponse(user, repo);
+}
+
+<span class="c">// POST /api/v1/auth/mfa/verify — exchange challengeToken + 6-digit code for tokens</span>
+export async function verifyMfa(challengeToken: string, code: string) {
+  const claim = readMfaChallengeToken(challengeToken);       <span class="c">// throws if expired/wrong purpose</span>
+  if (!claim) throw Object.assign(new Error('Challenge expired — sign in again'), { status: 401 });
+
+  <span class="c">// Rate-limit hard: 6 digits is 1M combinations, brute-forceable in minutes.</span>
+  const attempts = await redis.incr(`mfa:attempts:${claim.sub}`);
+  if (attempts === 1) await redis.expire(`mfa:attempts:${claim.sub}`, 900);
+  if (attempts &gt; 5)   throw Object.assign(new Error('Too many attempts'), { status: 429 });
+
+  const stored = await twoFactorRepository.find(claim.sub);
+  if (!stored?.enabled || !TOTPService.verifyToken(stored.secret, code)) {
+    throw Object.assign(new Error('Invalid verification code'), { status: 401 });
+  }
+  <span class="c">// Burn the code so a shoulder-surfed digit cannot be replayed inside its 30s window.</span>
+  const burned = await redis.set(`mfa:used:${claim.sub}:${code}`, '1', { NX: true, EX: 90 });
+  if (!burned) throw Object.assign(new Error('Code already used'), { status: 401 });
+
+  await redis.del(`mfa:attempts:${claim.sub}`);
+  return buildAuthResponse(await userRepository.findById(claim.sub));
+}</code></pre>
+
+<pre><code><span class="c">// auth-service/src/app.ts — these routes were completely open</span>
+<span class="del">- app.post('/api/v1/auth/2fa/generate', totpController.generate2FASecret);</span>
+<span class="del">- app.post('/api/v1/auth/2fa/verify',   totpController.verify2FASecret);</span>
+<span class="add">+ app.post('/api/v1/auth/2fa/generate', requireAuth, totpController.generate2FASecret);</span>
+<span class="add">+ app.post('/api/v1/auth/2fa/verify',   requireAuth, totpController.verify2FASecret);</span>
+
+<span class="c">// And delete the 'user-123' fallback — a missing identity is a 401, not a default user.</span></code></pre>
+
+    <p style="margin-top:12px">Also add recovery codes at enrolment. Without them, an admin who loses their phone is locked out of the platform permanently, and the pressure to add a manual backdoor is exactly how MFA gets quietly disabled.</p>
+  </div>
+
+  <!-- C9 -->
+  <div class="finding">
+    <div class="meta">
+      <span class="id crit">C9</span>
+      <span class="tag">Rate limiting</span>
+      <span class="tag effort">1 day</span>
+    </div>
+    <h3>The rate limiter can be bypassed with a header, and its fallback multiplies the limit by replica count</h3>
+    <p class="path">backend/api-gateway/src/middleware/rate-limit.middleware.ts:17, 46–51, 84–90</p>
+
+    <dl class="qa">
+      <div>
+        <dt>Current state</dt>
+        <dd>Four compounding problems. The key is <code>rl:${userId ?? ip}</code> where <code>userId</code> comes from the spoofable header (C1) — rotate a UUID per request and there is no limit. It is a fixed window, not the sliding window the comment claims, so a client gets 2× the limit across a boundary. One global bucket covers all endpoints, so <code>/search</code> and <code>/checkout</code> share a budget with <code>/health</code>. And <code>fallbackStore</code> is a per-process <code>Map</code> that is never pruned: with 20 gateway replicas the effective limit becomes 20× the configured value whenever Redis blips, while the map grows without bound.</dd>
+      </div>
+      <div>
+        <dt>Failure scenario</dt>
+        <dd>A scraper walks your catalogue at unlimited rate by sending a fresh <code>x-user-id</code> each request. During a Redis failover, 20 replicas each admit 100 rps per anonymous IP — 2,000 rps to product-service, which has no cache (H4) — and the fallback map accumulates one entry per distinct key until the pod is OOM-killed.</dd>
+      </div>
+    </dl>
+
+    <h4>The fix</h4>
+    <p>A real sliding-window counter in a single Lua round-trip, keyed on verified identity, with per-endpoint costs and a bounded local fallback.</p>
+
+<pre><code><span class="c">// Sliding window log, atomic — one RTT instead of the current INCR + pTTL.</span>
+const SLIDING_WINDOW = `
+  local key, now, window, limit = KEYS[1], tonumber(ARGV[1]), tonumber(ARGV[2]), tonumber(ARGV[3])
+  redis.call('ZREMRANGEBYSCORE', key, 0, now - window)
+  local count = redis.call('ZCARD', key)
+  if count &lt; limit then
+    redis.call('ZADD', key, now, ARGV[4])      -- unique member per request
+    redis.call('PEXPIRE', key, window)
+    return {1, limit - count - 1}
+  end
+  return {0, 0}
+`;
+
+<span class="c">// Cost-weighted, so expensive endpoints drain the budget faster.</span>
+const COST: Array&lt;[RegExp, number]&gt; = [
+  [/^\/api\/v1\/checkout/,  20],
+  [/^\/api\/v1\/payments/,  20],
+  [/^\/api\/v1\/search/,     5],
+  [/^\/api\/v1\/auth\/login/, 10],   <span class="c">// credential stuffing brake</span>
+  [/^\/health/,              0],
+];</code></pre>
+
+<pre><code>export function rateLimiter(windowMs = 60_000) {
+  return async (req, res, next) =&gt; {
+    <span class="c">// x-user-id is now trustworthy only because stripClientIdentity ran first (C1).</span>
+    const userId = req.headers['x-user-id'] as string | undefined;
+    const limit  = getLimitForRoles(req.headers['x-user-roles'] as string);
+    const cost   = COST.find(([re]) =&gt; re.test(req.path))?.[1] ?? 1;
+    if (cost === 0) return next();
+
+    <span class="c">// Anonymous traffic keys on IP; authenticated keys on the verified subject.</span>
+    const key = `rl:${userId ?? `ip:${req.ip}`}`;
+
+    let allowed: boolean, remaining: number;
+    try {
+      const [ok, rem] = await redis.eval(SLIDING_WINDOW, {
+        keys: [key],
+        arguments: [String(Date.now()), String(windowMs),
+                    String(Math.floor(limit / cost)), randomUUID()],
+      }) as [number, number];
+      allowed = ok === 1; remaining = rem;
+    } catch {
+      <span class="c">// Redis down → local token bucket, sized to limit/replicaCount so the</span>
+      <span class="c">// fleet-wide total still approximates the intended ceiling.</span>
+      const perPod = Math.ceil(limit / Number(process.env.GATEWAY_REPLICAS ?? 1));
+      ({ allowed, remaining } = localBucket.take(key, perPod, windowMs));
+    }
+
+    res.setHeader('X-RateLimit-Limit', limit);
+    res.setHeader('X-RateLimit-Remaining', Math.max(0, remaining));
+
+    if (!allowed) {
+      const retry = Math.ceil(windowMs / 1000);
+      res.setHeader('Retry-After', retry);
+      return res.status(429).json({
+        success: false, data: null,
+        error: { code: 'RATE_LIMITED',
+                 message: 'Too many requests. Please slow down.' },
+        meta: { retryAfter: retry, timestamp: new Date().toISOString() },
+      });
+    }
+    next();
+  };
+}</code></pre>
+
+    <p style="margin-top:12px">Back the local fallback with an LRU capped at ~10,000 entries rather than an unbounded <code>Map</code> — <code>lru-cache</code> with <code>max: 10_000, ttl: windowMs</code> gives you eviction for free. Note also that the current implementation returns a bare <code>{ message }</code> on 429 while every other error returns the standard envelope; make it consistent so clients can parse one shape.</p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<section>
+  <h2>High priority</h2>
+  <hr class="sec-rule">
+  <p class="sec-note">These will not stop a launch, but each one converts a traffic spike into an outage or a slow page into a lost sale.</p>
+
+  <!-- H1 -->
+  <div class="finding">
+    <div class="meta"><span class="id high">H1</span><span class="tag">Validation</span><span class="tag effort">3–4 days</span></div>
+    <h3>Zod schemas exist across 20 services and are applied in three</h3>
+    <p class="path">backend/shared/validators/common.ts · only currency.controller.ts:45 and tax.controller.ts:6,29 call <code>safeParse</code></p>
+    <p style="color:var(--ink-soft)">Every other controller reads <code>req.body</code> as <code>any</code>. <code>checkout.controller.ts</code> passes the raw body straight into the service; <code>inventory/index.ts:83</code> hand-rolls two <code>if</code> checks. Malformed input either throws a 500 with a stack trace or — worse, as in C3 — is silently accepted. There is no <code>validate()</code> middleware to apply.</p>
+    <p style="color:var(--ink-soft)"><strong>On the 10,000-concurrent question:</strong> Zod is not your bottleneck and you should not defer it. A typical checkout schema parses in 10–50µs; at 10k rps that is under 5% of one core. What <em>is</em> a real cost is the gateway parsing every request body with <code>express.json()</code> and then re-serializing it with <code>JSON.stringify(req.body)</code> in <code>callUpstream</code> (proxy.ts:105) — double the CPU and double the memory of a stream-through proxy, on a 2MB limit. Validate at the service edge; stream at the gateway.</p>
+<pre><code><span class="c">// backend/shared/http/validate.ts (new) — one middleware, applied everywhere</span>
+import type { ZodTypeAny } from 'zod';
+
+export const validate = (schema: ZodTypeAny, source: 'body' | 'query' | 'params' = 'body') =&gt;
+  (req, res, next) =&gt; {
+    const result = schema.safeParse(req[source]);
+    if (!result.success) {
+      return res.status(422).json({
+        success: false, data: null,
+        error: {
+          code: 'VALIDATION_FAILED',
+          message: 'Some fields need attention.',
+          fields: result.error.issues.map(i =&gt; ({
+            field: i.path.join('.') || source,
+            message: i.message,
+          })),
+        },
+        meta: { timestamp: new Date().toISOString() },
+      });
+    }
+    req[source] = result.data;   <span class="c">// coerced + stripped of unknown keys</span>
+    next();
+  };
+
+<span class="c">// Compile schemas once at module load, never inside the handler.</span>
+router.post('/checkout/initiate', requireAuth, validate(InitiateCheckoutSchema), initiateCheckout);</code></pre>
+    <p style="margin-top:12px;color:var(--ink-soft)">Use <code>.strict()</code> on every schema so unknown keys are rejected rather than passed through — that alone would have blocked the <code>subtotal</code> injection in C3.</p>
+  </div>
+
+  <!-- H2 -->
+  <div class="finding">
+    <div class="meta"><span class="id high">H2</span><span class="tag">API docs</span><span class="tag effort">2–3 days</span></div>
+    <h3>No OpenAPI specification anywhere in the repository</h3>
+    <p style="color:var(--ink-soft)">A search across all 615 TypeScript files and every JSON/YAML config returns one incidental match in <code>payment-service/src/config/env.ts</code>. There is no spec, no Swagger UI, and no generated client — so the three frontends and the mobile app are hand-writing request shapes against an API with no contract, and nothing detects a breaking change until runtime.</p>
+    <p style="color:var(--ink-soft)">Because H1 puts Zod schemas on every route anyway, generate the spec from them rather than maintaining a parallel YAML that drifts within a sprint:</p>
+<pre><code><span class="c">// npm i zod-to-openapi @asteasolutions/zod-to-openapi</span>
+import { OpenAPIRegistry, OpenApiGeneratorV31 } from '@asteasolutions/zod-to-openapi';
+
+const registry = new OpenAPIRegistry();
+
+registry.registerPath({
+  method: 'post', path: '/api/v1/checkout/initiate', tags: ['Checkout'],
+  security: [{ bearerAuth: [] }],
+  request: {
+    headers: z.object({ 'idempotency-key': z.string().uuid() }),
+    body: { content: { 'application/json': { schema: InitiateCheckoutSchema } } },
+  },
+  responses: {
+    201: { description: 'Checkout session created',
+           content: { 'application/json': { schema: CheckoutSessionSchema } } },
+    409: { description: 'Insufficient stock for one or more items' },
+    422: { description: 'Validation failed' },
+  },
+});
+
+<span class="c">// CI step: regenerate and fail the build if the committed spec differs.</span>
+<span class="c">//   node scripts/gen-openapi.js &amp;&amp; git diff --exit-code docs/openapi.json</span></code></pre>
+  </div>
+
+  <!-- H3 -->
+  <div class="finding">
+    <div class="meta"><span class="id high">H3</span><span class="tag">Observability</span><span class="tag effort">2–3 days</span></div>
+    <h3>The tracing module is written and wired into zero services</h3>
+    <p class="path">backend/shared/tracing/{telemetry,tracer}.ts — no service or the gateway imports either file</p>
+    <p style="color:var(--ink-soft)">The gateway generates a correlation id and logs structured JSON, which is a good foundation, but the id is not propagated as a W3C <code>traceparent</code> and no service emits spans. A checkout crossing gateway → checkout → inventory → payment → order → Kafka → fulfilment is six hops with no way to see which one added the latency.</p>
+    <p style="color:var(--ink-soft)"><strong>Why it matters under load:</strong> when p99 checkout latency goes from 400ms to 9s during a flash sale, you currently have no way to tell whether it is the Postgres row lock on the hot variant, the MTN MoMo API, or Redis. You will be guessing while the sale is running. Wire the existing module into every service's entrypoint before the first load test, not after.</p>
+  </div>
+
+  <!-- H4 -->
+  <div class="finding">
+    <div class="meta"><span class="id high">H4</span><span class="tag">Caching</span><span class="tag effort">3–4 days</span></div>
+    <h3>Product-service connects to Redis and never caches anything</h3>
+    <p class="path">product-service/src/app.ts:14,131 connects the cache · product.service.ts and category.service.ts never call it</p>
+    <p style="color:var(--ink-soft)">The hottest read path in the system — product detail, category listings, homepage containers — goes to Postgres on every request. <code>listProducts</code> additionally runs a <code>$transaction</code> of <code>findMany</code> + <code>count</code>, so every page view is two queries plus a full <code>COUNT(*)</code> over the filtered set. <code>cache.getOrSet</code> is currently used only by analytics, chat and recommendation.</p>
+    <p style="color:var(--ink-soft)"><strong>At 1M concurrent browsers</strong> this is millions of queries per minute against a single primary. The <code>COUNT(*)</code> alone will saturate it long before the reads do.</p>
+    <h4>Cache-aside with stampede, penetration and herd protection</h4>
+<pre><code><span class="c">// backend/shared/cache/protected-cache.ts (new)</span>
+<span class="c">// The existing cache.getOrSet has none of the three protections below.</span>
+
+const NULL_SENTINEL = ' NULL';
+
+export async function cached&lt;T&gt;(
+  key: string, ttlSec: number, fetcher: () =&gt; Promise&lt;T | null&gt;,
+): Promise&lt;T | null&gt; {
+
+  const hit = await redis.get(key).catch(() =&gt; null);
+  if (hit === NULL_SENTINEL) return null;                    <span class="c">// ① penetration</span>
+  if (hit !== null) return JSON.parse(hit) as T;
+
+  <span class="c">// ② Stampede: exactly one caller computes; the rest wait briefly and re-read.</span>
+  const lock = `lock:${key}`;
+  const got  = await redis.set(lock, '1', { NX: true, EX: 10 }).catch(() =&gt; 'OK');
+
+  if (!got) {
+    for (let i = 0; i &lt; 20; i++) {                            <span class="c">// up to ~1s</span>
+      await sleep(50);
+      const late = await redis.get(key).catch(() =&gt; null);
+      if (late === NULL_SENTINEL) return null;
+      if (late !== null) return JSON.parse(late) as T;
+    }
+    return fetcher();      <span class="c">// lock holder is slow — fall through rather than 504</span>
+  }
+
+  try {
+    const value = await fetcher();
+    <span class="c">// ③ Herd: ±20% jitter so a million keys set together do not expire together.</span>
+    const jittered = Math.floor(ttlSec * (0.8 + Math.random() * 0.4));
+
+    if (value === null) {
+      await redis.setEx(key, 60, NULL_SENTINEL);              <span class="c">// short TTL for misses</span>
+    } else {
+      await redis.setEx(key, jittered, JSON.stringify(value));
+    }
+    return value;
+  } finally {
+    await redis.del(lock).catch(() =&gt; {});
+  }
+}</code></pre>
+    <p style="margin-top:12px;color:var(--ink-soft)">On Redis being down: the existing <code>cache.getOrSet</code> already degrades correctly — it catches and calls the fetcher — so you fail <em>open</em> to the database. That is the right default for correctness but it means a Redis outage instantly moves 100% of read traffic onto Postgres. Pair it with a circuit breaker around the cache client and a small in-process LRU (a few thousand hot products, 5–10s TTL) so the database sees a fraction of that surge. You already have <code>resilience/circuit-breaker.ts</code> in the gateway — lift it into <code>shared/</code> and reuse it.</p>
+    <p style="color:var(--ink-soft)">For invalidation, use versioned keys rather than <code>delPattern</code>. The current <code>delPattern</code> runs <code>SCAN</code> across the keyspace, which is O(N) and slows linearly as the catalogue grows. Bump a per-entity version instead — <code>product:v{n}:{id}</code> — and stale keys expire on their own.</p>
+  </div>
+
+  <!-- H5 -->
+  <div class="finding">
+    <div class="meta"><span class="id high">H5</span><span class="tag">Search</span><span class="tag">Indexes</span><span class="tag effort">1–2 days</span></div>
+    <h3>Product search runs <code>ILIKE '%q%'</code> against Postgres while a tuned Elasticsearch index sits unused</h3>
+    <p class="path">product-service/src/services/product.service.ts:47–53</p>
+    <p style="color:var(--ink-soft)"><code>{ contains: params.q, mode: 'insensitive' }</code> on both <code>name</code> and <code>description</code> compiles to <code>ILIKE '%q%'</code>. A leading wildcard cannot use a B-tree index, so this is a sequential scan of the entire product table on every keystroke, ORed across two columns and combined with a <code>COUNT(*)</code>.</p>
+    <p style="color:var(--ink-soft)"><strong>At 10 million products</strong> this is a multi-second scan per search. Under a flash sale it will hold connections until the pool is exhausted and every unrelated query — including inventory reservation — starts queueing behind it. This is the single most likely cause of a total site outage.</p>
+    <p style="color:var(--ink-soft)">The frustrating part is that the fix is already built. <code>search-service</code> has custom <code>edge_ngram</code> analyzers, synonyms, vector query building and a product consumer keeping the index warm. It is simply not on the path that <code>GET /api/v1/products?q=</code> takes.</p>
+<pre><code><span class="c">// product.service.ts — delegate text search, keep Postgres for filters</span>
+export async function listProducts(rawQuery: unknown) {
+  const params = ListProductsSchema.parse(rawQuery);
+
+  if (params.q) {
+    <span class="c">// ES owns relevance; Postgres owns nothing here but the hydrate.</span>
+    const hits = await searchClient.search(params.q, {
+      category: params.category, minPrice: params.minPrice,
+      maxPrice: params.maxPrice, page: params.page, limit: params.limit,
+    });
+    return hydrateFromIds(hits.ids, hits.total);   <span class="c">// single WHERE id IN (...)</span>
+  }
+  <span class="c">// …existing filtered path for browse-without-query…</span>
+}</code></pre>
+    <p style="margin-top:12px;color:var(--ink-soft)">Keep a degraded fallback for when Elasticsearch is unavailable, but make it a prefix match that can use an index — <code>name ILIKE 'q%'</code> with <code>CREATE INDEX … ON "Product" (name text_pattern_ops)</code> — or a real <code>tsvector</code> column with a GIN index. Never fall back to a leading wildcard.</p>
+  </div>
+
+  <!-- H6 -->
+  <div class="finding">
+    <div class="meta"><span class="id high">H6</span><span class="tag">Indexes</span><span class="tag effort">1–2 days</span></div>
+    <h3>Single-column indexes only — no composites matching real query shapes</h3>
+    <p class="path">product-service/prisma/schema.prisma — 19 <code>@@index</code>, all single-column</p>
+    <p style="color:var(--ink-soft)">Coverage of foreign keys is good. What is missing is composites in selectivity order for the queries the code actually runs. <code>listProducts</code> filters <code>status = 'ACTIVE'</code> and orders by <code>createdAt DESC</code>; with separate indexes on each, Postgres picks one and sorts the rest. Same for the low-stock query, which filters <code>active</code> and <code>stock</code> but has an index only on <code>stock</code>.</p>
+<pre><code><span class="c">// prisma/schema.prisma</span>
+model Product {
+  <span class="c">// …</span>
+  <span class="add">@@index([status, createdAt(sort: Desc)])       // list/browse default sort</span>
+  <span class="add">@@index([status, categoryId, basePrice])       // category page + price sort</span>
+  <span class="add">@@index([sellerId, status, createdAt(sort: Desc)])  // seller dashboard</span>
+}
+
+model ProductVariant {
+  <span class="add">@@index([productId, active])</span>
+}</code></pre>
+<pre><code><span class="c">-- Partial index: only ACTIVE rows are ever browsed, so index only those.</span>
+<span class="c">-- Smaller index, cheaper writes on soft-deleted/archived rows.</span>
+CREATE INDEX CONCURRENTLY idx_product_active_recent
+  ON "Product" ("createdAt" DESC)
+  WHERE status = 'ACTIVE';
+
+<span class="c">-- Find unused indexes before they cost you write throughput:</span>
+SELECT relname, indexrelname, idx_scan, pg_size_pretty(pg_relation_size(indexrelid))
+FROM   pg_stat_user_indexes
+WHERE  idx_scan &lt; 50
+ORDER  BY pg_relation_size(indexrelid) DESC;
+
+<span class="c">-- Enable slow-query capture (postgresql.conf):</span>
+<span class="c">--   shared_preload_libraries = 'pg_stat_statements'</span>
+<span class="c">--   log_min_duration_statement = 200ms</span></code></pre>
+    <p style="margin-top:12px;color:var(--ink-soft)">Order-service's Mongo indexes are notably better — <code>{ userId: 1, createdAt: -1 }</code> and the sub-order composite are correctly ordered. One caveat: <code>order.schema.ts</code> stores dates as ISO <em>strings</em>, which works for equality and lexicographic range but blocks any use of Mongo's date operators or TTL indexes later.</p>
+  </div>
+
+  <!-- H7 -->
+  <div class="finding">
+    <div class="meta"><span class="id high">H7</span><span class="tag">Concurrency</span><span class="tag effort">2–3 days</span></div>
+    <h3>Flash-sale hot rows will serialize on a single Postgres lock</h3>
+    <p class="path">inventory-service/src/index.ts:91–142</p>
+    <p style="color:var(--ink-soft)">The reservation logic is <em>correct</em> — <code>SELECT … FOR UPDATE</code> inside a transaction, availability computed as <code>stock - reserved</code>, an expiring reservation row. Correctness is not the problem.</p>
+    <p style="color:var(--ink-soft)"><strong>At 50,000 concurrent buyers on one variant,</strong> every transaction queues on the same row lock. Each holds it for a <code>SELECT</code>, an <code>UPDATE</code>, a conditional <code>UPDATE … WHERE NOT EXISTS</code> with three correlated subqueries, and an <code>INSERT</code> — call it 3–5ms. That caps you at roughly 200–300 reservations per second for that variant regardless of how many pods you run, and 49,000 connections pile up behind it until the pool and then the gateway's 8s timeout both blow. There is no deadlock risk on a single row, but there <em>is</em> once you reserve multiple variants per checkout — two carts holding overlapping variants in different orders will deadlock.</p>
+    <h4>Three changes, in order of impact</h4>
+<pre><code><span class="c">// ① Always lock in a deterministic order. This alone removes multi-item deadlocks.</span>
+const ordered = [...items].sort((a, b) =&gt; a.variantId.localeCompare(b.variantId));
+for (const item of ordered) { /* reserve */ }</code></pre>
+<pre><code><span class="c">-- ② Drop FOR UPDATE for a single conditional UPDATE. Same guarantee,</span>
+<span class="c">--    one statement, lock held for microseconds instead of milliseconds.</span>
+UPDATE "ProductVariant"
+SET    reserved = reserved + $2, "updatedAt" = NOW()
+WHERE  id = $1
+  AND  stock - reserved &gt;= $2      <span class="c">-- the check IS the lock</span>
+RETURNING stock - reserved AS remaining;
+<span class="c">-- Zero rows affected ⇒ insufficient stock ⇒ 409. No read-then-write window.</span>
+<span class="c">-- Move the OUT_OF_STOCK product update out of this transaction and onto an event.</span></code></pre>
+<pre><code><span class="c">// ③ For announced flash sales, do not touch Postgres on the hot path at all.</span>
+<span class="c">// Pre-load the allocation into Redis; decrement atomically; settle to Postgres async.</span>
+const FLASH_RESERVE = `
+  local remaining = tonumber(redis.call('GET', KEYS[1]) or '0')
+  local want = tonumber(ARGV[1])
+  if remaining &gt;= want then
+    redis.call('DECRBY', KEYS[1], want)
+    redis.call('SETEX', KEYS[2], ARGV[2], want)   -- reservation token w/ TTL
+    return 1
+  end
+  return 0
+`;
+<span class="c">// Single-key Lua on one Redis shard: ~100k ops/sec, no lock convoy.</span></code></pre>
+    <p style="margin-top:12px;color:var(--ink-soft)"><strong>On Redlock:</strong> you do not currently use distributed locks anywhere, and for inventory you should not start. Redlock's failure mode is exactly the one that costs money — a lock holder that pauses for GC past the TTL keeps operating while another client acquires the same lock, and you oversell. The atomic conditional <code>UPDATE</code> above needs no lock at all, which is strictly safer. Reserve Redlock for genuinely non-transactional coordination such as "only one pod runs the payout batch".</p>
+  </div>
+
+  <!-- H8 -->
+  <div class="finding">
+    <div class="meta"><span class="id high">H8</span><span class="tag">Auth</span><span class="tag effort">4 hours</span></div>
+    <h3>Refresh rotation runs a bcrypt compare per token in the family</h3>
+    <p class="path">auth-service/src/services/auth.service.ts:155–162</p>
+    <p style="color:var(--ink-soft)">The rotation and reuse-detection logic is correct and well thought through — revoking the whole family on reuse is exactly right. The cost model is not: the loop bcrypt-compares the presented token against every unrevoked record in the family, at cost factor 10 (~100ms each). A family that accumulates <em>n</em> live tokens costs <em>n</em> × 100ms of blocked CPU per refresh.</p>
+    <p style="color:var(--ink-soft)"><strong>At 100,000 users refreshing hourly</strong> — roughly 28 rps — even a single compare each saturates three cores. bcrypt is deliberately slow; it belongs on passwords, not on a token that is already 256 bits of entropy.</p>
+<pre><code><span class="c">// Refresh tokens are high-entropy already — a plain SHA-256 is the right primitive.</span>
+<span class="c">// It also makes the lookup a single indexed query instead of a scan.</span>
+const hashToken = (raw: string) =&gt;
+  createHash('sha256').update(raw).digest('hex');
+
+<span class="c">// prisma: @@unique([tokenHash])</span>
+const record = await repo.findRefreshTokenByHash(hashToken(rawToken));
+
+if (!record || record.revokedAt || record.expiresAt &lt; new Date()) {
+  <span class="c">// Reuse detection is unchanged: a valid-signature token with no live</span>
+  <span class="c">// record means it was already rotated ⇒ revoke the family.</span>
+  const payload = readRefreshToken(rawToken);
+  if (payload) await repo.revokeFamily(payload.family);
+  throw Object.assign(new Error('Refresh token reuse detected — please log in again'),
+                      { status: 401 });
+}</code></pre>
+    <p style="margin-top:12px;color:var(--ink-soft)">Also replace the per-token revocation loop in <code>logout</code> (line 194) with a single <code>updateMany</code> on the family. And note <code>bcryptjs</code> is the pure-JS implementation — roughly 3–5× slower than native <code>bcrypt</code> and it blocks the event loop rather than using the thread pool. On the login path, where the cost factor is the point, switch to native <code>bcrypt</code> or <code>argon2</code>.</p>
+  </div>
+
+  <!-- H9 -->
+  <div class="finding">
+    <div class="meta"><span class="id high">H9</span><span class="tag">Domain design</span><span class="tag effort">1–2 weeks</span></div>
+    <h3>Synchronous REST chains where events belong</h3>
+    <p style="color:var(--ink-soft)">The domain decomposition itself is sound — Product, Inventory, Order, Payment, Fulfilment are properly separated, and inventory logic does <em>not</em> leak into order-service. The coupling problem is in the transport. Checkout calls inventory, payment and order over synchronous HTTP, so its availability is the product of theirs: four services at 99.9% each give the checkout path 99.6%, or about three hours of downtime a month, and one slow dependency stalls the whole chain.</p>
+    <p style="color:var(--ink-soft)">The right split: <strong>synchronous</strong> for anything the customer must see resolved before the response — reserve, charge, create order. <strong>Asynchronous</strong> for everything downstream — notification, analytics, fulfilment, loyalty accrual, search reindex, seller payout. Several of these already consume events (<code>inventory/consumers/order.consumer.ts</code>, <code>payment/consumers/order.consumer.ts</code>, <code>search/consumers/product.consumer.ts</code>), so the pattern is established; it just is not applied consistently.</p>
+    <p style="color:var(--ink-soft)">On the roadmap's 2PC question: you are not using two-phase commit anywhere, which is the correct answer. The reserve→charge→deduct sequence with compensations in C2 is a saga, and that is the right pattern for this domain. Do not add an event-sourced write model — the operational cost is not justified at your stage.</p>
+  </div>
+
+  <!-- H10 -->
+  <div class="finding">
+    <div class="meta"><span class="id high">H10</span><span class="tag">Load balancing</span><span class="tag">CDN</span><span class="tag effort">3–5 days</span></div>
+    <h3>Nginx proxies to <code>localhost</code>, has no health checks, and breaks WebSockets</h3>
+    <p class="path">nginx/nginx.conf</p>
+    <p style="color:var(--ink-soft)">Every <code>proxy_pass</code> targets <code>http://localhost:PORT</code>, which cannot work once services are in separate containers or pods. There is no <code>upstream</code> block, so no load balancing across replicas and no passive health checking — a dead backend keeps receiving traffic. There are no <code>Upgrade</code>/<code>Connection</code> headers, so chat-service's Socket.IO connections will fail the handshake and silently fall back to long-polling. <code>worker_connections 1024</code> caps the whole tier at about 1,000 concurrent connections. And no <code>X-Forwarded-Proto</code> is set, so the gateway cannot tell HTTP from HTTPS.</p>
+<pre><code>events { worker_connections 16384; use epoll; multi_accept on; }
+
+http {
+  upstream api_gateway {
+    least_conn;
+    server api-gateway:8080 max_fails=3 fail_timeout=15s;
+    keepalive 64;                       <span class="c"># reuse upstream connections</span>
+  }
+
+  <span class="c"># Static assets: long TTL + immutable, so the CDN never revalidates.</span>
+  location ~* \.(js|css|woff2|png|jpg|webp|avif|svg)$ {
+    add_header Cache-Control "public, max-age=31536000, immutable";
+  }
+
+  <span class="c"># Semi-dynamic: serve stale while revalidating so a slow origin never</span>
+  <span class="c"># becomes a slow page. This is what absorbs a flash-sale browse spike.</span>
+  location /api/v1/products {
+    proxy_pass http://api_gateway;
+    proxy_cache          product_cache;
+    proxy_cache_valid    200 30s;
+    proxy_cache_key      "$request_uri|$http_x_currency";
+    proxy_cache_use_stale error timeout updating http_500 http_502 http_503;
+    proxy_cache_lock     on;            <span class="c"># ← stampede protection at the edge</span>
+    add_header X-Cache-Status $upstream_cache_status;
+  }
+
+  location /socket.io/ {                <span class="c"># chat-service</span>
+    proxy_pass http://api_gateway;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade    $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_read_timeout 3600s;
+  }
+
+  location /api/ {
+    proxy_pass http://api_gateway;
+    proxy_set_header Host              $host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+  }
+}</code></pre>
+    <p style="margin-top:12px;color:var(--ink-soft)">Set <code>app.set('trust proxy', 1)</code> in the gateway too — without it <code>req.ip</code> is the proxy's address, so anonymous rate limiting (C9) buckets the entire internet into one key.</p>
+    <p style="color:var(--ink-soft)"><strong>On the 1M-concurrent-browsers question:</strong> the answer is not more pods, it is not serving that traffic from your origin at all. Product images and static assets go to CloudFront or Cloudflare with a year-long TTL. Listing and detail responses get 30–60s edge cache keyed on the query string — a flash-sale homepage is the same response for every anonymous visitor, so a 30-second edge TTL turns a million requests into about 20 origin requests per minute. Everything personalised (<code>Authorization</code> present) bypasses the edge. That is the difference between needing 400 pods and needing 12.</p>
+  </div>
+
+  <!-- H11 -->
+  <div class="finding">
+    <div class="meta"><span class="id high">H11</span><span class="tag">Gateway</span><span class="tag effort">1 day</span></div>
+    <h3>The proxy buffers and rewrites every request and response</h3>
+    <p class="path">api-gateway/src/utils/proxy.ts:96, 103–105, 117</p>
+    <p style="color:var(--ink-soft)">Three problems in one function. <code>reqHeaders.set('content-type', 'application/json')</code> is unconditional, so <code>multipart/form-data</code> uploads to media-service arrive mislabelled and unparseable. The body is <code>JSON.stringify(req.body)</code>, which means the gateway must fully parse and re-serialize every payload — and any non-JSON body is destroyed. And <code>Buffer.from(await raw.arrayBuffer())</code> buffers entire responses in memory, so a large product export holds its full size in the gateway heap per concurrent request.</p>
+    <p style="color:var(--ink-soft)">Stream instead: pipe <code>req</code> into the upstream request and pipe the upstream response back, forwarding the original <code>content-type</code>. This also fixes a subtler bug — the response loop at line 79 copies <code>content-encoding</code> from upstream while <code>res.send()</code> may re-encode, producing responses whose declared encoding does not match their bytes.</p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<section>
+  <h2>Medium priority</h2>
+  <hr class="sec-rule">
+  <p class="sec-note">Real defects with contained blast radius. Several are ten-minute fixes worth doing while you are already in the file.</p>
+
+  <div class="scroll">
+  <table>
+    <thead>
+      <tr><th>ID</th><th>Issue</th><th>Where</th><th>Impact</th><th>Effort</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="sev med">M1</td>
+        <td><strong>Service port collisions.</strong> review-service and inventory-service both default to 4011; pricing-service and container-service both to 4033. The gateway's own comments acknowledge both.</td>
+        <td class="num">gateway.ts:22, 44</td>
+        <td>Whichever binds second crashes on <code>EADDRINUSE</code>, or worse, requests route to the wrong service in dev.</td>
+        <td class="num">1 hr</td>
+      </tr>
+      <tr>
+        <td class="sev med">M2</td>
+        <td><strong>Four routes reference target keys that do not exist.</strong> <code>targets.buyerProtection</code>, <code>targets.sellerEducation</code>, <code>targets.wholesale</code> and <code>targets.tracking</code> are all <code>undefined</code> — the map defines <code>'buyer-protection'</code> and <code>'seller-education'</code>, and has no wholesale or tracking entry at all.</td>
+        <td class="num">customer.routes.ts:51–58</td>
+        <td>Silently falls through to a hardcoded <code>http://localhost:PORT</code>, so these routes break in every non-local environment with no error at startup.</td>
+        <td class="num">1 hr</td>
+      </tr>
+      <tr>
+        <td class="sev med">M3</td>
+        <td><strong>Webhook signatures compared with <code>===</code>.</strong> Both the Flutterwave static-hash check and the Pesapal HMAC comparison use plain string equality.</td>
+        <td class="num">gateway.service.ts:283, 290</td>
+        <td>Byte-by-byte early exit leaks signature bytes through timing. Use <code>crypto.timingSafeEqual</code> on equal-length buffers.</td>
+        <td class="num">30 min</td>
+      </tr>
+      <tr>
+        <td class="sev med">M4</td>
+        <td><strong>The gateway error handler defaults everything to 502.</strong> Any error without a <code>.status</code> — including a CORS rejection, which is a client error — returns <code>BAD_GATEWAY</code>.</td>
+        <td class="num">app.ts:119–132</td>
+        <td>Misleading status codes corrupt your error-rate dashboards and make the circuit breaker's signal noisy. Default to 500 and map CORS to 403.</td>
+        <td class="num">1 hr</td>
+      </tr>
+      <tr>
+        <td class="sev med">M5</td>
+        <td><strong>Offset pagination on unbounded lists.</strong> <code>skip: page * limit</code> in product listing and the equivalent in order history.</td>
+        <td class="num">product.service.ts:89</td>
+        <td>Postgres must walk and discard every skipped row. At 1M orders, page 5,000 reads 100,000 rows to return 20. Switch to keyset pagination (<code>WHERE createdAt &lt; $cursor</code>) for anything deep-scrollable.</td>
+        <td class="num">1–2 days</td>
+      </tr>
+      <tr>
+        <td class="sev med">M6</td>
+        <td><strong>Reservation expiry worker is commented out.</strong> <code>// import { startExpiryWorker } … // uncomment after bullmq setup</code></td>
+        <td class="num">inventory-service/src/index.ts:9</td>
+        <td>Abandoned carts hold stock forever once C2 makes reservations real. The worker itself is written and correct — it just needs BullMQ wired and the import restored.</td>
+        <td class="num">4 hrs</td>
+      </tr>
+      <tr>
+        <td class="sev med">M7</td>
+        <td><strong>No infrastructure as code, service mesh, or progressive delivery.</strong> <code>backend/terraform/</code> contains only a <code>.gitkeep</code>. No Istio/Linkerd, so no mTLS between services and no canary routing. Deployments are default rolling updates with no blue/green or automated rollback.</td>
+        <td class="num">backend/terraform/</td>
+        <td>Cloud resources are clickops — unreproducible and undocumented. Without mTLS, the identity-header trust model from C1 depends entirely on NetworkPolicy being correct forever. Lower urgency than it looks: fix C1 properly and mesh mTLS becomes defence in depth rather than the only defence.</td>
+        <td class="num">1–2 wks</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<section>
+  <h2>What's done well</h2>
+  <hr class="sec-rule">
+  <p class="sec-note">These are above the standard for a codebase at this stage. Keep them, and use them as the pattern when fixing everything above.</p>
+
+  <div class="win">
+    <h3>Gateway resilience: circuit breaker + bulkhead + retry, correctly layered</h3>
+    <p>Bulkhead outside, breaker inside, retry innermost, each with its own error type and a distinct HTTP status — <code>CIRCUIT_OPEN</code> → 503, <code>BULKHEAD_FULL</code> → 503, timeout → 504. Circuit state is exposed on <code>/health/ready</code> and <code>/internal/metrics</code>. Most teams ship one of these three, badly. The only change needed is the retry-safety fix in C4.</p>
+  </div>
+
+  <div class="win">
+    <h3>RabbitMQ topology with delay-queue retry, DLQ and Redis idempotency</h3>
+    <p><code>infrastructure/rabbitmq/</code> has a dead-letter exchange, per-attempt delay queues dead-lettering back into the main exchange for exponential backoff, a terminal DLQ after max retries, <code>prefetch</code> for backpressure, and a Redis claim/release idempotency guard keyed on <code>eventId</code>. That is a textbook-correct implementation, and it answers the roadmap's exactly-once and poison-pill questions properly. Extend the same idempotency helper to HTTP (C4) rather than writing a second one.</p>
+  </div>
+
+  <div class="win">
+    <h3>Inventory reservation is the one piece of the checkout path built correctly</h3>
+    <p>Pessimistic locking inside a transaction, availability derived from <code>stock - reserved</code> rather than a mutable counter, TTL-bounded reservation rows with an index on <code>expiresAt</code> for cheap expiry sweeps, and automatic <code>OUT_OF_STOCK</code> propagation. H7 tunes it for hot rows; the design is right.</p>
+  </div>
+
+  <div class="win">
+    <h3>Refresh token rotation with family-based theft detection</h3>
+    <p>Rotating on every use, and revoking the entire family when an already-rotated token reappears, is the correct pattern and is genuinely uncommon. Tokens are hashed at rest and stored with expiry. Refresh lives in an HttpOnly cookie — the right choice — with a body fallback for mobile clients. Only the bcrypt cost model needs changing (H8).</p>
+  </div>
+
+  <div class="win">
+    <h3>Search service analyzers are production-grade</h3>
+    <p>Edge-ngram tokenizer with a separate search analyzer (avoiding the classic mistake of ngramming the query too), synonyms, explicit field mappings, vector query building, and a product consumer keeping the index current. This is exactly what the roadmap asks for — it just needs to be on the request path (H5).</p>
+  </div>
+
+  <div class="win">
+    <h3>Kubernetes manifests are more complete than the application they deploy</h3>
+    <p>Default-deny NetworkPolicy with explicit allows, HPAs on CPU and memory, KEDA ScaledObjects for queue-depth-driven scaling, PodDisruptionBudgets, and separated base/overlay kustomizations. KEDA in particular is the right answer to the roadmap's "1M backlogged messages" question — consumers scale on queue depth, not CPU. Security headers and strict CORS at the gateway are solid too.</p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════════ -->
+<section>
+  <h2>Action plan</h2>
+  <hr class="sec-rule">
+  <p class="sec-note">Ordered by risk removed per day spent. Phase 1 is not optional and is mostly small diffs.</p>
+
+  <div class="phase">
+    <div class="phase-head">
+      <span class="phase-n">PHASE 1</span>
+      <h3>Close the open doors</h3>
+      <span class="phase-when">2–3 days · do this week</span>
+    </div>
+    <p style="color:var(--ink-soft)">Every item here is exploitable now and none takes more than a day. Nothing else should ship before these land.</p>
+    <ul class="plain">
+      <li><strong>C1</strong> — <code>stripClientIdentity</code> as the first middleware. One function, four lines. Add a test that asserts a spoofed <code>x-user-roles: ROLE_SUPER_ADMIN</code> gets 401 on <code>/api/v1/admin/users</code>.</li>
+      <li><strong>C3</strong> — stop reading <code>subtotal</code> from the request body. Even before the full saga exists, reject the field.</li>
+      <li><strong>C7</strong> — remove the hardcoded secret fallbacks; fail startup instead. Drop access tokens to 15 minutes.</li>
+      <li><strong>C8 (partial)</strong> — put <code>requireAuth</code> on the three 2FA routes and delete the <code>'user-123'</code> default today; full MFA enforcement can follow in phase 2.</li>
+      <li><strong>C4 (partial)</strong> — restrict gateway retries to idempotent methods. A three-line change that stops triple-charging immediately.</li>
+      <li><strong>C6</strong> — ownership checks on every checkout, order, payment, return and dispute lookup.</li>
+      <li><strong>M2</strong> — fix the four undefined target keys before they fail in staging.</li>
+    </ul>
+  </div>
+
+  <div class="phase">
+    <div class="phase-head">
+      <span class="phase-n">PHASE 2</span>
+      <h3>Make the money path real</h3>
+      <span class="phase-when">2 weeks · before any payment goes live</span>
+    </div>
+    <ul class="plain">
+      <li><strong>C4</strong> — the full idempotency middleware on checkout and payment, on its own Redis with <code>noeviction</code>; pass stable keys through to MTN and Airtel.</li>
+      <li><strong>C2</strong> — the real saga with compensations, wired to the inventory endpoints that actually exist. Enable the expiry worker (<strong>M6</strong>) in the same change.</li>
+      <li><strong>C5, tier 1</strong> — persist checkout sessions to Redis and the payment/escrow/split/payout ledgers to Postgres with decimal money types.</li>
+      <li><strong>C8</strong> — MFA challenge flow, enforced for <code>ROLE_ADMIN</code>, <code>ROLE_SUPER_ADMIN</code> and <code>ROLE_SELLER</code>, with recovery codes.</li>
+      <li><strong>C9</strong> — sliding-window limiter with per-endpoint costs and a bounded local fallback.</li>
+      <li><strong>H1</strong> — the <code>validate()</code> middleware on every state-changing route, schemas <code>.strict()</code>.</li>
+      <li><strong>H3</strong> — wire the existing tracing module into every service. Do this <em>before</em> the first load test, not after it fails.</li>
+    </ul>
+  </div>
+
+  <div class="phase">
+    <div class="phase-head">
+      <span class="phase-n">PHASE 3</span>
+      <h3>Make it hold under load</h3>
+      <span class="phase-when">3 weeks · before a marketing push</span>
+    </div>
+    <ul class="plain">
+      <li><strong>H5</strong> — route <code>?q=</code> through Elasticsearch; keep an indexed prefix-match fallback. Highest single-item impact on outage risk.</li>
+      <li><strong>H4</strong> — cache-aside on product and category reads with stampede locks, null sentinels and TTL jitter.</li>
+      <li><strong>H10</strong> — real nginx upstreams with health checks and WebSocket upgrade, plus CDN for static assets and 30s edge cache on anonymous listings.</li>
+      <li><strong>H7</strong> — deterministic lock ordering, then the single conditional <code>UPDATE</code>; Redis pre-allocation for announced flash sales only.</li>
+      <li><strong>H6</strong> — composite and partial indexes; turn on <code>pg_stat_statements</code> and <code>log_min_duration_statement</code>.</li>
+      <li><strong>H8, H11</strong> — SHA-256 refresh lookups; stream request and response bodies through the gateway.</li>
+      <li><strong>Load test</strong> — k6 or Gatling against staging: 10k concurrent browse, 1k concurrent checkout on one variant, and a Redis-kill and a Postgres-failover drill. This is where you find out whether the above worked.</li>
+    </ul>
+  </div>
+
+  <div class="phase">
+    <div class="phase-head">
+      <span class="phase-n">PHASE 4</span>
+      <h3>Pay down the rest</h3>
+      <span class="phase-when">4+ weeks · after launch</span>
+    </div>
+    <ul class="plain">
+      <li><strong>C5, tier 2</strong> — persist the remaining stateful services; retire the in-memory stores.</li>
+      <li><strong>H2</strong> — OpenAPI generated from the Zod schemas, with a CI drift check.</li>
+      <li><strong>H9</strong> — move notification, analytics, fulfilment, loyalty and reindex off synchronous REST onto events.</li>
+      <li><strong>M5</strong> — keyset pagination on deep-scrollable lists.</li>
+      <li><strong>M7</strong> — Terraform the cloud resources; then evaluate a service mesh for mTLS and canary routing.</li>
+      <li>Read replicas for product and order reads once cache hit rate plateaus. Do not shard yet — nothing here is write-bound.</li>
+    </ul>
+  </div>
+</section>
+
+<footer>
+  Audit scope: backend/ (32 services, api-gateway, shared, infrastructure), nginx/, kubernetes manifests.<br>
+  Every finding cites a file and line in this repository as of branch feature/footer-nav-and-order-logistics-batch.<br>
+  Not covered: frontend applications, mobile client, third-party provider contracts, PCI DSS scope assessment.
+</footer>
+
+</div>

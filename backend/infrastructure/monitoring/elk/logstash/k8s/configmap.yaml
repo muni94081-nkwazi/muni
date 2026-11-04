@@ -1,0 +1,77 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: logstash-pipeline
+  namespace: muni-monitoring
+data:
+  muni.conf: |
+    input {
+      beats {
+        port => 5044
+        host => "0.0.0.0"
+      }
+    }
+
+    filter {
+      if [message] =~ /^\{/ {
+        json {
+          source => "message"
+          target => "parsed"
+        }
+        
+        mutate {
+          rename => {
+            "[parsed][ts]"            => "@timestamp"
+            "[parsed][level]"         => "log_level"
+            "[parsed][service]"       => "service"
+            "[parsed][correlationId]" => "correlation_id"
+            "[parsed][event]"         => "event"
+            "[parsed][method]"        => "http_method"
+            "[parsed][path]"          => "http_path"
+            "[parsed][status]"        => "http_status"
+            "[parsed][durationMs]"    => "duration_ms"
+            "[parsed][userId]"        => "user_id"
+            "[parsed][error]"         => "error_message"
+          }
+          remove_field => ["message", "parsed", "agent", "ecs", "input", "log", "host"]
+        }
+        
+        if [log_level] == "ERROR" {
+          mutate { add_field => { "[@metadata][index_suffix]" => "errors" } }
+        } else {
+          mutate { add_field => { "[@metadata][index_suffix]" => "access" } }
+        }
+        
+        if [http_status] {
+          mutate { convert => { "http_status" => "integer" "duration_ms" => "float" } }
+        }
+        
+        if [ip] {
+          geoip {
+            source => "ip"
+            target => "geoip"
+            fields => ["country_code2", "country_name", "city_name", "location"]
+          }
+        }
+      }
+      
+      if [http_path] =~ /\/health/ {
+        drop {}
+      }
+    }
+
+    output {
+      elasticsearch {
+        hosts => ["$"]
+        index => "muni-logs-%{[@metadata][index_suffix]}-%{+YYYY.MM.dd}"
+        template_name => "muni-logs"
+        template_overwrite => false
+      }
+      
+      if [log_level] == "ERROR" {
+        elasticsearch {
+          hosts => ["$"]
+          index => "muni-errors-%{+YYYY.MM.dd}"
+        }
+      }
+    }

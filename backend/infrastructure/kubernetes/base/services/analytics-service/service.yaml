@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: analytics-service
+  namespace: muni
+  labels:
+    app: analytics-service
+spec:
+  selector:
+    app: analytics-service
+  ports:
+  - name: http
+    port: 4008
+    targetPort: 4008
+    protocol: TCP
+  type: ClusterIP

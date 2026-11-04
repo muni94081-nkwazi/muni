@@ -1,0 +1,206 @@
+// ─── Prisma Schema — MUNI Auth Service ────────────────────────────────────────
+// Run `npx prisma migrate dev --name <name>` after any change to this file.
+
+// Generate into this service rather than the hoisted node_modules/@prisma/client,
+// which every Prisma service in the monorepo would otherwise overwrite in turn —
+// leaving only the last service to run `prisma generate` with a usable client.
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── User ─────────────────────────────────────────────────────────────────────
+
+model User {
+  id                String    @id @default(uuid())
+  firstName         String
+  lastName          String
+  email             String    @unique
+  phoneNumber       String?
+  profilePictureUrl String?
+  passwordHash      String    @default("") // empty for OAuth-only accounts
+  roles             String[]  @default(["ROLE_CUSTOMER"])
+  active            Boolean   @default(true)
+  emailVerified     Boolean   @default(false)
+  phoneVerified     Boolean   @default(false)
+  lastLoginAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  refreshTokens   RefreshToken[]
+  passwordResets  PasswordReset[]
+  oauthAccounts   OAuthAccount[]
+  sellerProfile   SellerProfile?
+  twoFactorSecret TwoFactorSecret?
+
+  @@map("users")
+}
+
+// ─── Refresh Token ────────────────────────────────────────────────────────────
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  family    String
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([family])
+  @@map("refresh_tokens")
+}
+
+// ─── Password Reset OTP ───────────────────────────────────────────────────────
+
+model PasswordReset {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  otpHash   String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@map("password_resets")
+}
+
+// ─── Two-Factor (TOTP) Secret ──────────────────────────────────────────────────
+// One row per user. `enabled` flips to true only after the user confirms
+// possession of the authenticator app via verify2FASecret.
+
+model TwoFactorSecret {
+  id        String    @id @default(uuid())
+  userId    String    @unique
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  secret    String    // Base32-encoded TOTP secret
+  enabled   Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@map("two_factor_secrets")
+}
+
+// ─── OAuth Account ─────────────────────────────────────────────────────────────
+// One row per provider per user. A user can have Google + Facebook linked.
+// provider values: "google" | "facebook"
+
+model OAuthAccount {
+  id             String   @id @default(uuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider       String   // "google" | "facebook" | "apple"
+  providerUserId String   // the id returned by the provider
+  email          String?  // email from provider (may differ from User.email)
+  displayName    String?
+  avatarUrl      String?
+  // AES-256-GCM ciphertext (iv:authTag:cipherText), not the raw token — see
+  // encryptPII() in backend/shared/security/encryption.ts. Encrypted in every
+  // environment, not just production: a dev-only code path is a code path that
+  // never gets exercised where it matters. Rows written before this change are
+  // still plaintext and decryptPII() passes them through unchanged.
+  // Not usable in a WHERE clause: the IV is random per write, so the same token
+  // encrypts to a different value every time.
+  accessToken    String?
+  refreshToken   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([provider, providerUserId])
+  @@index([userId])
+  @@map("oauth_accounts")
+}
+
+// ─── Seller Profile ───────────────────────────────────────────────────────────
+// Created when a user applies to become a seller.
+// verificationStatus lifecycle:
+//   pending → verified | rejected
+//   verified → suspended → verified (reinstated)
+
+enum VerificationStatus {
+  pending
+  verified
+  rejected
+  suspended
+}
+
+model SellerProfile {
+  id                 String             @id @default(uuid())
+  userId             String             @unique
+  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Business identity
+  businessName       String
+  businessType       String             @default("individual") // individual | company | partnership
+  taxId              String?
+  registrationNumber String?            // business registration number
+
+  // Contact & address
+  businessEmail      String?
+  businessPhone      String?
+  businessAddress    Json               // { street, city, region, country, postalCode }
+
+  // Payout details
+  bankAccount        Json               // { accountNumber, bankName, accountName, swiftCode? }
+
+  // KYC Status
+  verificationStatus VerificationStatus @default(pending)
+  verificationReason String?            // admin's reason for rejection / approval note
+  verifiedAt         DateTime?
+  verifiedBy         String?            // admin user id
+
+  // Store info (filled after verification)
+  storeName          String?
+  storeSlug          String?            @unique
+  storeDescription   String?
+  storeBannerUrl     String?
+  storeLogoUrl       String?
+
+  // Stats
+  totalSales         Int                @default(0)
+  totalProducts      Int                @default(0)
+  rating             Float              @default(0)
+
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  documents          SellerDocument[]
+
+  @@index([verificationStatus])
+  @@map("seller_profiles")
+}
+
+// ─── Seller Document ──────────────────────────────────────────────────────────
+// Uploaded KYC documents: ID, business registration, tax certificate, etc.
+
+enum DocumentType {
+  national_id
+  passport
+  business_registration
+  tax_certificate
+  bank_statement
+  other
+}
+
+model SellerDocument {
+  id            String         @id @default(uuid())
+  sellerId      String
+  seller        SellerProfile  @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  documentType  DocumentType
+  fileName      String
+  fileUrl       String         // local path or S3 URL
+  mimeType      String
+  fileSizeBytes Int
+  uploadedAt    DateTime       @default(now())
+
+  @@index([sellerId])
+  @@map("seller_documents")
+}

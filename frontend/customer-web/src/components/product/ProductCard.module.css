@@ -1,0 +1,240 @@
+/* ─── Marketplace product card ───────────────────────────────────────────────
+ *
+ * One shape, used by every grid in the app. The previous stylesheet carried
+ * `list` and `compact` variants, a quick-view modal, a flash-sale strip, a
+ * compare tray and a share menu — none of which any caller ever asked for, and
+ * none of which the product API has data for.
+ *
+ * The card is a container, not a link. The product name holds the only
+ * navigation, stretched over the card face with ::after so the whole tile is
+ * clickable; the wishlist and cart controls sit above that overlay on their
+ * own z-index. That keeps one link and two buttons as siblings rather than
+ * nesting buttons inside an anchor, which is invalid and made the keyboard
+ * order unusable.
+ */
+
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface, #fff);
+  border: 1px solid var(--color-border, #e6e8eb);
+  border-radius: 12px;
+  overflow: hidden;
+  transition: box-shadow 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+  height: 100%;
+}
+
+.card:hover {
+  border-color: var(--color-border-strong, #d3d7dd);
+  box-shadow: 0 6px 20px rgb(15 23 42 / 10%);
+}
+
+/* The name's stretched ::after takes the pointer, so lifting the card on hover
+   must not intercept it — transform only, no stacking context change. */
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .card:hover { transform: translateY(-2px); }
+}
+
+/* Focus lands on the inner link; show it on the whole tile so the shopper can
+   see where they are. */
+.card:focus-within {
+  outline: 2px solid var(--color-primary, #0b74c4);
+  outline-offset: 2px;
+}
+
+/* ─── Media ───────────────────────────────────────────────────────────────── */
+
+.media {
+  position: relative;
+  /* Square keeps every tile in a row the same height regardless of how the
+     seller cropped their photo. */
+  aspect-ratio: 1 / 1;
+  background: var(--color-surface-muted, #f6f7f8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  /* Sellers upload on white; contain avoids cropping a product to fill a box.
+     The inset is proportional rather than a fixed 8px, so the product keeps
+     the same visual margin as the tile grows. */
+  padding: 3%;
+}
+
+.discountBadge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 2;
+  background: var(--color-danger, #c92c3c);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 6px 9px;
+  border-radius: 4px;
+  letter-spacing: 0.01em;
+}
+
+.outOfStock {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(255 255 255 / 72%);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text-secondary, #5b6670);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.wishlistButton {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 3;
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border, #e6e8eb);
+  border-radius: 50%;
+  background: rgb(255 255 255 / 94%);
+  cursor: pointer;
+  padding: 0;
+  color: var(--color-text-secondary, #5b6670);
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.wishlistButton:hover { color: var(--color-danger, #c92c3c); border-color: currentcolor; }
+.wishlistButton[aria-pressed='true'] { color: var(--color-danger, #c92c3c); }
+.wishlistButton:disabled { cursor: progress; opacity: 0.6; }
+
+/* ─── Body ────────────────────────────────────────────────────────────────── */
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 14px 16px 16px;
+  flex: 1;
+}
+
+.brand {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary, #5b6670);
+}
+
+.name {
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--color-text-primary, #0f172a);
+  text-decoration: none;
+  /* Two lines maximum, so a long title cannot push the price out of line with
+     the neighbouring cards. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.name:hover { color: var(--color-primary, #0b74c4); }
+
+/* Makes the whole card the link target without nesting anything. */
+.name::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+.rating {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  color: var(--color-text-secondary, #5b6670);
+}
+
+.stars { color: var(--color-accent-yellow, #f2a413); letter-spacing: 0.5px; line-height: 1; }
+
+.priceRow {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.price {
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--color-text-primary, #0f172a);
+  font-variant-numeric: tabular-nums;
+}
+
+.compareAt {
+  font-size: 13px;
+  color: var(--color-text-secondary, #5b6670);
+  text-decoration: line-through;
+  font-variant-numeric: tabular-nums;
+}
+
+.addButton {
+  z-index: 3;
+  position: relative;
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 42px;
+  padding: 11px 14px;
+  border: none;
+  border-radius: 8px;
+  background: var(--color-primary, #0b74c4);
+  color: #fff;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.addButton:hover:not(:disabled) { background: var(--color-primary-dark, #095b99); }
+
+.addButton:disabled {
+  background: var(--color-surface-muted, #eef0f2);
+  color: var(--color-text-secondary, #5b6670);
+  cursor: not-allowed;
+}
+
+/* ─── Mobile ──────────────────────────────────────────────────────────────────
+ * Two per row, and the card is re-proportioned rather than just narrower:
+ * tighter padding, smaller type, and a full-width tappable button. */
+
+@media (max-width: 640px) {
+  .body { padding: 10px 10px 12px; gap: 5px; }
+  .name { font-size: 13px; }
+  .price { font-size: 16px; }
+  .compareAt { font-size: 12px; }
+  .rating { font-size: 12px; }
+  .addButton { min-height: 40px; font-size: 13px; }
+  .wishlistButton { width: 32px; height: 32px; top: 8px; right: 8px; }
+  .discountBadge { font-size: 12px; padding: 5px 7px; top: 8px; left: 8px; }
+}

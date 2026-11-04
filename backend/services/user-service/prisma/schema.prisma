@@ -1,0 +1,222 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CUSTOMER
+  SELLER
+  ADMIN
+}
+
+model User {
+  id           String   @id @default(uuid())
+  firstName    String
+  lastName     String
+  email        String   @unique
+  phoneNumber  String?  @unique
+  passwordHash String
+  role         Role     @default(CUSTOMER)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  passwordResetTokens PasswordResetToken[]
+  refreshTokens       RefreshToken[]
+  sellerTrustStats    SellerTrustStats?
+  addresses           Address[]
+  preferences         NotificationPreference?
+
+  @@map("users")
+}
+
+// ─── Address Book ───────────────────────────────────────────────────────────
+//
+// checkout-service previously received a free-text address blob per order,
+// so a returning buyer re-typed their address every time and nothing could
+// be validated or reused. Addresses live here (not on the order) because
+// they belong to the user; an order snapshots the fields it needs at
+// placement time so later edits to a saved address never rewrite history.
+//
+// Region/district/ward mirror the Uganda + Zambia administrative hierarchy
+// the shipping-service pickup stations are keyed by — free-text `city`
+// alone could not be matched to a delivery zone.
+
+enum AddressType {
+  HOME
+  WORK
+  PICKUP_STATION
+}
+
+model Address {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type         AddressType @default(HOME)
+  /// Recipient may differ from the account holder (gifts, office deliveries).
+  contactName  String
+  contactPhone String
+
+  country     String  @default("UG")
+  region      String
+  district    String
+  ward        String?
+  /// Street/plot line, or the pickup-station name when type = PICKUP_STATION.
+  addressLine String
+  landmark    String?
+  postalCode  String?
+
+  /// Set when the buyer picked a shipping-service pickup station rather than a street address.
+  pickupStationId String?
+
+  latitude  Float?
+  longitude Float?
+
+  /// Exactly one default per user is enforced in address.service.ts, inside a transaction.
+  isDefault Boolean   @default(false)
+  deletedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, deletedAt])
+  @@map("addresses")
+}
+
+// ─── Notification Preferences ───────────────────────────────────────────────
+//
+// notification-service reads this to decide which channels a given event may
+// use. Stored per-user rather than per-notification so a buyer can mute
+// marketing SMS without losing delivery updates — the distinction that
+// matters most where the recipient pays for nothing but data is scarce.
+model NotificationPreference {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Transactional — order/payment/delivery. Off by default only for push,
+  // which needs a registered device token to mean anything.
+  transactionalSms   Boolean @default(true)
+  transactionalEmail Boolean @default(true)
+  transactionalPush  Boolean @default(true)
+
+  // Marketing — promotions, price drops, abandoned cart.
+  marketingSms   Boolean @default(false)
+  marketingEmail Boolean @default(true)
+  marketingPush  Boolean @default(false)
+
+  /// WhatsApp is opt-in: Twilio requires prior recipient consent for business messaging.
+  whatsappOptIn Boolean @default(false)
+
+  /// IANA zone, used to hold non-urgent sends outside quiet hours.
+  timezone     String @default("Africa/Kampala")
+  quietHoursStart Int? // 0-23, local hour
+  quietHoursEnd   Int?
+
+  /// BCP-47; drives template selection in notification-service.
+  locale String @default("en")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("notification_preferences")
+}
+
+// ─── Seller Trust Score ─────────────────────────────────────────────────────
+//
+// One row per seller, holding the raw counters the trust-score formula is
+// computed from (see sellerTrust.service.ts) plus a cached score/badge set
+// refreshed on every ingested event. Counters are updated by
+// `sellerTrust.service.ts#recordEvent`, fed by dispute-service (dispute
+// rate, INAD/defect rate, response time) and, when a caller supplies
+// expected-delivery info, by buyer-protection-service's escrow "delivered"
+// signal (on-time delivery rate).
+model SellerTrustStats {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  totalOrders                 Int @default(0)
+  onTimeDeliveries            Int @default(0)
+  lateDeliveries              Int @default(0)
+  disputesOpened              Int @default(0)
+  disputesResolvedSellerFavor Int @default(0)
+  disputesResolvedBuyerFavor  Int @default(0)
+  defectReportsINAD           Int @default(0)
+  slaBreaches                 Int @default(0)
+
+  // ── Seller performance counters ──────────────────────────────────────────
+  // The trust score above answers "should a buyer trust this seller"; these
+  // answer "is this seller in breach of policy", which is a separate question
+  // with a separate (enforcement) consequence. Kept on the same row because
+  // both are derived from the same order stream and are always read together
+  // on the seller scorecard.
+  lateShipments      Int @default(0)
+  cancelledBySeller  Int @default(0)
+  /// Denominator for shipment/cancellation rates — every order that reached the seller.
+  ordersAccepted     Int @default(0)
+  /// A-to-Z style claims granted against the seller; the harshest defect signal.
+  claimsGranted      Int @default(0)
+  policyViolations   Int @default(0)
+
+  // Response-time accumulator — avgResponseTimeHours = totalResponseHours / resolvedResponseCount
+  totalResponseHours    Float @default(0)
+  resolvedResponseCount Int   @default(0)
+
+  // Admin-granted — feeds the "Verified Merchant" badge. Set via a separate admin action, not by event ingestion.
+  isVerifiedMerchant Boolean @default(false)
+
+  // Cached, recalculated by sellerTrust.service.ts on every recordEvent call
+  // (and readable directly without recomputation on plain reads).
+  trustScore Float    @default(70)
+  badges     String[] @default([])
+
+  /// Enforcement state derived from the performance counters — see evaluateStanding().
+  standing         SellerStanding @default(GOOD)
+  standingReason   String?
+  standingChangedAt DateTime?
+
+  lastCalculatedAt DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@map("seller_trust_stats")
+}
+
+enum SellerStanding {
+  GOOD
+  AT_RISK
+  SUSPENDED
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}

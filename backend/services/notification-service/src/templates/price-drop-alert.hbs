@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Price Drop Alert: {{productName}}</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 20px; }
+    .container { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; padding: 32px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+    .header { text-align: center; border-bottom: 2px solid #f1f5f9; padding-bottom: 20px; }
+    .price-badge { background: #ef4444; color: #ffffff; font-size: 20px; font-weight: 800; padding: 12px; border-radius: 8px; text-align: center; margin: 20px 0; }
+    .old-price { text-decoration: line-through; color: #64748b; font-size: 16px; }
+    .btn { display: block; width: 100%; text-align: center; background-color: #16a34a; color: #ffffff; font-weight: 600; text-decoration: none; padding: 14px 0; border-radius: 8px; margin-top: 24px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h2>🔥 Price Drop Alert!</h2>
+      <p>Good news! An item on your price watch just dropped in price.</p>
+    </div>
+
+    <h3>{{productName}}</h3>
+    <div class="price-badge">
+      Now Only: {{newPrice}} {{currency}}
+      <br><span class="old-price">Was: {{oldPrice}} {{currency}}</span>
+    </div>
+
+    <a href="https://muni.ug/products/{{productId}}" class="btn">Buy Now Before Stock Runs Out &rarr;</a>
+  </div>
+</body>
+</html>

@@ -1,0 +1,138 @@
+name: Security Scan
+
+on:
+  schedule:
+    - cron: '0 2 * * 1'
+  pull_request:
+    paths:
+      - '**/package.json'
+      - '**/Dockerfile'
+      - '.github/workflows/**'
+  workflow_dispatch:
+
+jobs:
+  dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dependencies
+        run: npm ci
+      - name: Run npm audit
+        run: npm audit --audit-level=moderate > audit-report.txt || true
+      - name: Upload audit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit-report
+          path: audit-report.txt
+
+  codeql-analysis:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          queries: security-and-quality
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+
+  container-scan:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [api-gateway, auth-service, product-service, order-service, payment-service, cart-service, checkout-service]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: |
+          DOCKERFILE="backend/services/${{ matrix.service }}/Dockerfile"
+          if [ "${{ matrix.service }}" = "api-gateway" ]; then
+            DOCKERFILE="backend/api-gateway/Dockerfile"
+          fi
+          docker build -t muni/${{ matrix.service }}:test -f $DOCKERFILE .
+      # Two passes on purpose. The SARIF upload wants everything down to MEDIUM
+      # so the Security tab shows the full picture, but a report is not a gate —
+      # this step has never failed a build, at any severity. The gating pass
+      # below is what actually stops a vulnerable image.
+      - name: Run Trivy (report — all severities to the Security tab)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'muni/${{ matrix.service }}:test'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+      - name: Upload Trivy results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      # The gate. HIGH as well as CRITICAL: the advisories that actually mattered
+      # in this codebase — nodemailer's SMTP command injection, sharp's libvips
+      # CVEs — were both HIGH, and a CRITICAL-only gate would have passed each of
+      # them without comment.
+      #
+      # ignore-unfixed, so a base-image CVE with no available patch reports but
+      # does not block a release nobody can unblock.
+      - name: Run Trivy (gate — fail on CRITICAL or HIGH)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'muni/${{ matrix.service }}:test'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+  secrets-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+      - name: TruffleHog
+        if: failure()
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+
+  owasp-dependency-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependency Check
+        uses: jeremylong/DependencyCheck-Action@v3
+        with:
+          project: 'muni'
+          path: '.'
+          format: 'HTML'
+          failOnCVSS: 7.0
+
+  sast-semgrep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Semgrep
+        uses: semgrep/semgrep-action@v1
+        with:
+          config: >-
+            p/nodejs
+            p/typescript
+            p/owasp-top-ten
+            p/express
+          generateSarif: "1"
+      - name: Upload SARIF file
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: semgrep.sarif

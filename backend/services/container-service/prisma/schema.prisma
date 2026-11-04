@@ -1,0 +1,81 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Container {
+  id          String    @id @default(cuid())
+  slug        String    @unique
+  name        String
+  description String?
+  type        ContainerType
+  icon        String?
+  displayMode String    @default("grid") // grid, carousel, list, featured
+  itemsPerRow Int       @default(4)
+  maxItems    Int       @default(12)
+  isActive    Boolean   @default(true)
+  sortOrder   Int       @default(0)
+  bgColor     String?   @default("#ffffff")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  products    ContainerProduct[]
+  rules       ContainerRule[]
+}
+
+model ContainerProduct {
+  id          String   @id @default(cuid())
+  containerId String
+  productId   String
+  sortOrder   Int      @default(0)
+  addedBy     String   // admin or seller ID
+  addedAt     DateTime @default(now())
+  expiresAt   DateTime? // Optional expiration
+  reason      String?  // Why added (promotion, deal, etc.)
+
+  container   Container @relation(fields: [containerId], references: [id])
+
+  @@unique([containerId, productId])
+  @@index([productId])
+}
+
+model ContainerRule {
+  id          String   @id @default(cuid())
+  containerId String
+  ruleType    RuleType
+  value       Json     // { category: "electronics", minPrice: 10000, maxPrice: 100000, minRating: 4, etc. }
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  container   Container @relation(fields: [containerId], references: [id])
+}
+
+enum ContainerType {
+  TRENDING
+  DEALS
+  NEW_ARRIVALS
+  FEATURED
+  CATEGORY
+  SELLER_PICKS
+  RECOMMENDED
+  FLASH_SALE
+  CUSTOM
+}
+
+enum RuleType {
+  CATEGORY
+  SELLER
+  PRICE_RANGE
+  MIN_RATING
+  IN_STOCK_ONLY
+  DISCOUNT_PERCENTAGE
+  TAG
+  CUSTOM
+}

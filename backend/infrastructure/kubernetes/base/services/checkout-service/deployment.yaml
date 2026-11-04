@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: checkout-service
+  namespace: muni
+  labels:
+    app: checkout-service
+    tier: backend
+    version: v1
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: checkout-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: checkout-service
+        tier: backend
+        version: v1
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+      - name: checkout-service
+        image: 123456789012.dkr.ecr.af-south-1.amazonaws.com/muni/checkout-service:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 4024
+          name: http
+        envFrom:
+        - configMapRef:
+            name: muni-config
+        - secretRef:
+            name: muni-secrets
+        env:
+        - name: PORT
+          value: "4024"
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
+          limits:
+            cpu: "1000m"
+            memory: "1Gi"
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: 4024
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 4024
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        lifecycle:
+          preStop:
+            exec:
+              command: ["/bin/sh", "-c", "sleep 5"]
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - checkout-service
+              topologyKey: kubernetes.io/hostname

@@ -1,0 +1,80 @@
+// ─── pricing-service schema ───────────────────────────────────────────────────
+//
+// Owns database `muni_pricing`. Replaces rulesStore, competitorsStore and
+// historyStore.
+//
+// A repricing rule is a standing instruction to change what a seller charges,
+// with a floor below which it must never go. Losing the rules on restart
+// silently stops repricing; losing the history destroys the audit trail for
+// why a price moved.
+//
+// The seeded competitor prices for `phone-001` — invented Jumia and Kikuubo
+// figures — are gone. Auto-pricing reads competitor rows to decide real
+// prices, so fabricated ones would have driven real price changes.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum PricingRuleType {
+  MATCH
+  BEAT_BY
+  PERCENTAGE
+}
+
+model PricingRule {
+  id        String @id
+  sellerId  String @map("seller_id")
+  productId String @map("product_id")
+
+  ruleType PricingRuleType @map("rule_type")
+
+  targetPrice   Decimal @map("target_price") @db.Decimal(14, 2)
+  /// The rule may never price below this, whatever competitors do.
+  minPriceFloor Decimal @map("min_price_floor") @db.Decimal(14, 2)
+  currentPrice  Decimal @map("current_price") @db.Decimal(14, 2)
+
+  isActive Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @map("created_at")
+  updatedAt DateTime @map("updated_at")
+
+  @@index([sellerId])
+  @@index([isActive])
+  @@index([productId])
+  @@map("pricing_rules")
+}
+
+model CompetitorPrice {
+  id        String @id
+  productId String @map("product_id")
+
+  competitorName String  @map("competitor_name")
+  price          Decimal @db.Decimal(14, 2)
+  currency       String
+
+  scrapedAt String @map("scraped_at")
+
+  @@index([productId])
+  @@map("competitor_prices")
+}
+
+model PriceHistory {
+  id        String @id
+  productId String @map("product_id")
+
+  oldPrice Decimal @map("old_price") @db.Decimal(14, 2)
+  newPrice Decimal @map("new_price") @db.Decimal(14, 2)
+  reason   String
+
+  changedAt String @map("changed_at")
+
+  @@index([productId, changedAt])
+  @@map("price_histories")
+}

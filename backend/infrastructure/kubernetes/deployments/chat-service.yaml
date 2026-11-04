@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chat-service
+  namespace: muni-prod
+  labels:
+    app.kubernetes.io/name: chat-service
+    app.kubernetes.io/part-of: muni-platform
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: chat-service
+  template:
+    metadata:
+      labels:
+        app: chat-service
+    spec:
+      containers:
+        - name: chat-service
+          image: 123456789012.dkr.ecr.af-south-1.amazonaws.com/muni/chat-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 4025
+              name: http
+          env:
+            - name: PORT
+              value: "4025"
+            - name: NODE_ENV
+              value: "production"
+            - name: REDIS_URL
+              value: "redis://redis-master.muni-prod.svc.cluster.local:6379"
+            - name: KAFKA_BROKERS
+              value: "kafka-cluster-kafka-bootstrap.muni-prod.svc.cluster.local:9092"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 4025
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 4025
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chat-service-svc
+  namespace: muni-prod
+  labels:
+    app: chat-service
+spec:
+  type: ClusterIP
+  ports:
+    - port: 4025
+      targetPort: 4025
+      protocol: TCP
+      name: http
+  selector:
+    app: chat-service

@@ -1,0 +1,281 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  lint-and-typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+
+      # Several services import types from their own generated Prisma client
+      # (src/generated/prisma). Without this, `tsc --noEmit` fails with
+      # "Cannot find module" on every one of them and the real type errors are
+      # buried under hundreds of phantom ones.
+      - name: Generate Prisma clients
+        run: |
+          set -euo pipefail
+          for schema in $(find backend -name schema.prisma -not -path '*/node_modules/*' | sort); do
+            svc_dir=$(dirname "$(dirname "$schema")")
+            echo "::group::prisma generate — $svc_dir"
+            npx prisma generate --schema="$schema"
+            echo "::endgroup::"
+          done
+
+      - name: Lint
+        run: npx turbo run lint --parallel
+
+      # Covers every backend service and frontend app that defines a
+      # `typecheck` script. `--continue` so one service's failure does not mask
+      # the rest — a red CI run should list every broken package, not the first.
+      - name: Typecheck (all services and apps)
+        run: npx turbo run typecheck --parallel --continue
+
+  test:
+    runs-on: ubuntu-latest
+    needs: [lint-and-typecheck]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: muni_test
+          POSTGRES_USER: muni_test
+          POSTGRES_PASSWORD: test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      mongo:
+        image: mongo:7
+        env:
+          MONGO_INITDB_ROOT_USERNAME: muni_test
+          MONGO_INITDB_ROOT_PASSWORD: test_password
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ ping: 1 })'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      elasticsearch:
+        image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
+        env:
+          discovery.type: single-node
+          xpack.security.enabled: 'false'
+          ES_JAVA_OPTS: -Xms512m -Xmx512m
+        ports:
+          - 9200:9200
+        options: >-
+          --health-cmd "curl -fsS http://localhost:9200/_cluster/health || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://muni_test:test_password@localhost:5432/muni_test
+      REDIS_URL: redis://localhost:6379
+      MONGODB_URI: mongodb://muni_test:test_password@localhost:27017/muni_test?authSource=admin
+      ELASTICSEARCH_URL: http://localhost:9200
+      NODE_ENV: test
+      JWT_SECRET: test-jwt-secret-minimum-32-chars-long
+      JWT_REFRESH_SECRET: test-refresh-secret-min-32-chars
+      # Exercises the signed-identity path rather than the header fallback, so
+      # CI tests the mode production actually runs in.
+      INTERNAL_IDENTITY_SECRET: test-internal-identity-secret-32-chars-plus
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma clients
+        run: |
+          set -euo pipefail
+          for schema in $(find backend -name schema.prisma -not -path '*/node_modules/*' | sort); do
+            npx prisma generate --schema="$schema"
+          done
+
+      # Every service that OWNS migrations gets them applied — previously only
+      # auth-service did, so a schema change anywhere else was never exercised
+      # against a real database in CI.
+      #
+      # Services without a prisma/migrations directory are skipped on purpose.
+      # inventory-service is the important case: its schema is a deliberate
+      # read-only subset of product-service's tables on the SAME database, so
+      # migrating from it would drop the columns it omits. See the header in
+      # backend/services/inventory-service/prisma/schema.prisma.
+      - name: Run Prisma migrations
+        run: |
+          set -euo pipefail
+          for schema in $(find backend -name schema.prisma -not -path '*/node_modules/*' | sort); do
+            svc_dir=$(dirname "$(dirname "$schema")")
+            if [ -d "$(dirname "$schema")/migrations" ]; then
+              echo "::group::migrate deploy — $svc_dir"
+              npx prisma migrate deploy --schema="$schema"
+              echo "::endgroup::"
+            else
+              echo "skip (no migrations, not the owner): $svc_dir"
+            fi
+          done
+
+      # No --passWithNoTests: a service with a `test` script and no tests is now
+      # a CI failure, not a silent pass. Every service that had none has been
+      # given real coverage.
+      - name: Run tests
+        run: npx turbo run test --parallel --continue -- --forceExit
+
+      - name: Upload coverage
+        if: env.CODECOV_TOKEN != null
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  # The operational scripts — backups, restore, the post-deploy health gate and
+  # the rollback. None of them is reachable from `turbo run test`, and all four
+  # are code you find out is broken at the worst possible moment. The tests stub
+  # pg_*, curl and kubectl and exercise the real control flow.
+  ops-scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Backup and restore scripts
+        run: bash scripts/__tests__/backup-restore.test.sh
+      - name: Deploy health check and rollback scripts
+        run: bash scripts/__tests__/deploy-rollback.test.sh
+      - name: Shellcheck
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          shellcheck -S warning scripts/*.sh scripts/__tests__/*.sh
+
+  compose-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      # Catches malformed YAML, unknown keys, bad anchors and undefined env
+      # interpolation before anything is deployed.
+      - name: Validate docker-compose
+        run: |
+          cp .env.example .env
+          docker compose config --quiet
+          echo "docker-compose.yml is valid"
+
+  docker-build-check:
+    runs-on: ubuntu-latest
+    needs: [lint-and-typecheck]
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [api-gateway, auth-service, product-service, order-service, payment-service, cart-service, checkout-service, fraud-service, inventory-service, container-service]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build Docker image
+        run: |
+          DOCKERFILE="backend/services/${{ matrix.service }}/Dockerfile"
+          if [ "${{ matrix.service }}" = "api-gateway" ]; then
+            DOCKERFILE="backend/api-gateway/Dockerfile"
+          fi
+          docker buildx build --platform linux/amd64 -f $DOCKERFILE . --target production --no-cache=false
+
+  security-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      # Gates on what actually ships. `--omit=dev` is the load-bearing flag:
+      # without it this step has been failing on `vite` (HIGH) and `vitest`
+      # (CRITICAL), neither of which reaches production — one is a dev-server
+      # path traversal, the other needs the Vitest UI server listening, and
+      # neither binary exists in a runtime image. A gate that is permanently red
+      # for reasons nobody can fix teaches the team to ignore CI.
+      #
+      # The full tree, dev dependencies included, is reported below so that
+      # backlog stays visible rather than silently excluded.
+      - name: Run npm audit (production dependencies)
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Report full dependency backlog (non-blocking)
+        if: always()
+        run: |
+          echo "### Root advisories, including build tooling" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          npm audit --audit-level=moderate >> "$GITHUB_STEP_SUMMARY" 2>&1 || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      # mobile/ is deliberately outside the npm workspaces (React Native needs a
+      # single hoisted react-native and its own Metro haste map — see the
+      # comment:mobile note in the root package.json). Its lockfile is therefore
+      # not covered by the audit above, which meant every advisory in the Expo
+      # and React Native trees went unseen by CI.
+      #
+      # Gated at `critical`, not `high`, and that is a deliberate choice rather
+      # than an oversight. Every current HIGH in this tree — expo, metro,
+      # @expo/cli, image-size, postcss — reports `fixAvailable: expo@57.0.20`,
+      # i.e. all of them are transitive through Expo itself and none can be
+      # resolved without migrating SDK 54 -> 57. A gate that is red on arrival
+      # and cannot be made green teaches everyone to ignore it.
+      #
+      # The backlog is printed below rather than hidden, so it stays visible.
+      # Raise this to `high` as part of the SDK 57 upgrade, not before.
+      # No install first: npm audit resolves from the committed lockfile, and
+      # mobile/package-lock.json is checked in.
+      - name: Run npm audit (mobile — gates on critical)
+        working-directory: mobile
+        run: npm audit --audit-level=critical
+
+      - name: Report mobile high-severity backlog (non-blocking)
+        working-directory: mobile
+        if: always()
+        run: |
+          echo "### Mobile high-severity advisories (blocked on Expo SDK 57)" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          npm audit --audit-level=high >> "$GITHUB_STEP_SUMMARY" 2>&1 || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Run gitleaks detect
+        uses: gitleaks/gitleaks-action@v2

@@ -1,0 +1,119 @@
+/* ─── Product detail page shell ──────────────────────────────────────────────
+ *
+ * The breadcrumb and the sections below the main product area. The buy box and
+ * gallery own their own stylesheet (ProductDetails.module.css).
+ *
+ * `--color-text-secondary` (#eff6f9) and `--color-market-green` (#ffffff) are
+ * avoided here for the same reason as in that file: both are effectively white
+ * and unreadable on a white surface. `--color-text-muted` is used instead.
+ */
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-5);
+  color: var(--color-text-muted);
+}
+
+.breadcrumbLink {
+  color: var(--color-interactive);
+  text-decoration: none;
+}
+
+.breadcrumbLink:hover { text-decoration: underline; }
+
+.breadcrumbSep { color: var(--color-border); }
+
+.breadcrumbCurrent {
+  color: var(--color-text-muted);
+  /* A long product name must not push the trail into a second awkward line on
+     a phone; it truncates and the <h1> below carries the full name. */
+  max-width: 46ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ─── Panels below the product ────────────────────────────────────────────── */
+
+.detailPanel,
+.reviewsSection {
+  margin-top: var(--space-8, 3rem);
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--color-border-light);
+}
+
+.panelHeading {
+  font-size: var(--text-xl);
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin: 0 0 var(--space-4);
+}
+
+.panelSubheading {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin: var(--space-6) 0 var(--space-3);
+}
+
+.description {
+  color: var(--color-text-primary);
+  line-height: 1.65;
+  max-width: 72ch;
+  margin: 0;
+}
+
+.featureList {
+  margin: 0;
+  padding-left: var(--space-5);
+  color: var(--color-text-primary);
+  line-height: 1.7;
+  max-width: 72ch;
+}
+
+/* ─── Specifications ──────────────────────────────────────────────────────── */
+
+/* The table scrolls inside its own box so the page never scrolls sideways. */
+.specTableWrap {
+  overflow-x: auto;
+  max-width: 72ch;
+}
+
+.specTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.specTable th,
+.specTable td {
+  text-align: left;
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--color-border-light);
+  vertical-align: top;
+}
+
+.specTable th {
+  width: 34%;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: capitalize;
+}
+
+.specTable td { color: var(--color-text-primary); }
+
+/* ─── Reviews ─────────────────────────────────────────────────────────────── */
+
+.reviewsSection {
+  /* Review prose reads badly at full page width. */
+  max-width: 72ch;
+}
+
+@media (max-width: 768px) {
+  .breadcrumbCurrent { max-width: 22ch; }
+  .panelHeading { font-size: var(--text-lg); }
+}

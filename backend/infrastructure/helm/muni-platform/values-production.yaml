@@ -1,0 +1,100 @@
+global:
+  imageTag: stable
+
+configmap:
+  LOG_LEVEL: warn
+  NODE_ENV: production
+
+services:
+  api-gateway:
+    replicaCount: 3
+    autoscaling:
+      enabled: true
+  auth-service:
+    replicaCount: 2
+    autoscaling:
+      enabled: true
+  product-service:
+    replicaCount: 2
+    autoscaling:
+      enabled: true
+  order-service:
+    replicaCount: 2
+    autoscaling:
+      enabled: true
+  payment-service:
+    replicaCount: 2
+    autoscaling:
+      enabled: true
+  shipping-service:
+    replicaCount: 2
+    autoscaling:
+      enabled: true
+  notification-service:
+    replicaCount: 2
+    autoscaling:
+      enabled: true
+  analytics-service:
+    replicaCount: 2
+    autoscaling:
+      enabled: true
+  search-service:
+    replicaCount: 2
+    autoscaling:
+      enabled: true
+  inventory-service:
+    replicaCount: 2
+    autoscaling:
+      enabled: true
+  review-service:
+    replicaCount: 2
+    autoscaling:
+      enabled: true
+  currency-service:
+    replicaCount: 2
+    autoscaling:
+      enabled: true
+  tax-service:
+    replicaCount: 2
+    autoscaling:
+      enabled: true
+  discount-service:
+    replicaCount: 2
+    autoscaling:
+      enabled: true
+  wishlist-service:
+    replicaCount: 2
+    autoscaling:
+      enabled: true
+  cart-service:
+    replicaCount: 2
+    autoscaling:
+      enabled: true
+  media-service:
+    replicaCount: 2
+    autoscaling:
+      enabled: true
+  fraud-service:
+    replicaCount: 2
+    autoscaling:
+      enabled: true
+  return-service:
+    replicaCount: 2
+    autoscaling:
+      enabled: true
+  dispute-service:
+    replicaCount: 2
+    autoscaling:
+      enabled: true
+  marketplace-service:
+    replicaCount: 2
+    autoscaling:
+      enabled: true
+  fulfillment-service:
+    replicaCount: 2
+    autoscaling:
+      enabled: true
+  checkout-service:
+    replicaCount: 2
+    autoscaling:
+      enabled: true

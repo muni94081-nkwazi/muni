@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "muni.fullname" . }}-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "muni.labels" . | nindent 4 }}
+data:
+  {{- range $k, $v := .Values.configmap }}
+  {{ $k }}: {{ $v | quote }}
+  {{- end }}
+  KAFKA_BROKERS: {{ .Values.kafka.brokers | quote }}
+  REDIS_URL: {{ .Values.redis.url | quote }}
+  ELASTICSEARCH_URL: {{ .Values.elasticsearch.url | quote }}
+  DB_HOST: {{ .Values.postgresql.host | quote }}
+  DB_PORT: {{ .Values.postgresql.port | quote }}
+  DB_NAME: {{ .Values.postgresql.database | quote }}
+  DB_USER: {{ .Values.postgresql.user | quote }}

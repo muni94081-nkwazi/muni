@@ -1,0 +1,154 @@
+// ─── wishlist-service schema ──────────────────────────────────────────────────
+//
+// Owns database `muni_wishlist`. Replaces six in-memory stores across three
+// services: userWishlists, priceAlertsStore, priceHistoryStore, sharesStore,
+// collaboratorsStore and activityStore.
+//
+// A wishlist is the list a customer built by hand over weeks, and a price
+// alert is a promise to tell them when something they want gets cheaper.
+// Neither survived a restart.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SharePermission {
+  view
+  edit
+}
+
+enum WishlistAction {
+  add_item
+  remove_item
+  share
+  add_collaborator
+}
+
+model Wishlist {
+  id     String @id
+  userId String @map("user_id")
+
+  name     String
+  isPublic Boolean @default(false) @map("is_public")
+
+  items WishlistItem[]
+
+  createdAt DateTime @map("created_at")
+  updatedAt DateTime @map("updated_at")
+
+  @@index([userId, createdAt])
+  // getPublicWishlist scans for a public list by id.
+  @@index([isPublic])
+  @@map("wishlists")
+}
+
+model WishlistItem {
+  id         String   @id
+  wishlistId String   @map("wishlist_id")
+  wishlist   Wishlist @relation(fields: [wishlistId], references: [id], onDelete: Cascade)
+
+  productId    String @map("product_id")
+  productName  String @map("product_name")
+  productImage String @map("product_image")
+
+  price        Decimal @db.Decimal(14, 2)
+  /// What it cost when the customer added it — the baseline a price-drop
+  /// notification is measured against.
+  priceAtAdd   Decimal @map("price_at_add") @db.Decimal(14, 2)
+  currentPrice Decimal @map("current_price") @db.Decimal(14, 2)
+
+  addedAt DateTime @map("added_at")
+
+  /// addItem() refuses to add a product already on the list.
+  @@unique([wishlistId, productId])
+  // handleProductPriceUpdate finds every list holding a product.
+  @@index([productId])
+  @@map("wishlist_items")
+}
+
+model PriceTracking {
+  id     String @id
+  userId String @map("user_id")
+
+  productId   String @map("product_id")
+  productName String @map("product_name")
+
+  targetPrice  Decimal @map("target_price") @db.Decimal(14, 2)
+  currency     String
+  currentPrice Decimal @map("current_price") @db.Decimal(14, 2)
+
+  lastCheckedAt String  @map("last_checked_at")
+  isActive      Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @map("created_at")
+
+  @@index([userId, isActive])
+  @@index([productId])
+  @@map("price_trackings")
+}
+
+model PriceHistoryPoint {
+  id        String @id
+  productId String @map("product_id")
+
+  price    Decimal @db.Decimal(14, 2)
+  currency String
+
+  timestamp String
+
+  @@index([productId, timestamp])
+  @@map("price_history_points")
+}
+
+model WishlistShare {
+  /// The Map was keyed by the share token, and that is what a recipient
+  /// presents to open the list.
+  shareToken String @id @map("share_token")
+
+  id         String  @unique
+  wishlistId String  @map("wishlist_id")
+
+  sharedWithUserId String?         @map("shared_with_user_id")
+  permission       SharePermission
+
+  createdAt DateTime  @map("created_at")
+  expiresAt DateTime? @map("expires_at")
+
+  @@index([wishlistId])
+  @@map("wishlist_shares")
+}
+
+model WishlistCollaborator {
+  id         String @id
+  wishlistId String @map("wishlist_id")
+  userId     String @map("user_id")
+
+  email      String?
+  permission SharePermission
+
+  addedAt DateTime @map("added_at")
+
+  /// One collaborator record per person per list.
+  @@unique([wishlistId, userId])
+  @@index([wishlistId])
+  @@map("wishlist_collaborators")
+}
+
+model WishlistActivity {
+  id         String @id
+  wishlistId String @map("wishlist_id")
+  userId     String @map("user_id")
+
+  action WishlistAction
+
+  timestamp String
+
+  @@index([wishlistId, timestamp])
+  @@map("wishlist_activities")
+}

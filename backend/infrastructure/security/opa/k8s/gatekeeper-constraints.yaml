@@ -1,0 +1,98 @@
+---
+# Install Gatekeeper first:
+# kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/v3.16.3/deploy/gatekeeper.yaml
+
+# ── ConstraintTemplate: RequiredLabels ───────────────────────────────────────
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: munirequiredlabels
+spec:
+  crd:
+    spec:
+      names:
+        kind: MuniRequiredLabels
+  targets:
+  - target: admission.k8s.gatekeeper.sh
+    rego: |
+      package munirequiredlabels
+      violation[{"msg": msg}] {
+        required := {"app", "tier", "version"}
+        provided := {label | input.review.object.metadata.labels[label]}
+        missing := required - provided
+        count(missing) > 0
+        msg := sprintf("Missing required labels: %v", [missing])
+      }
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: MuniRequiredLabels
+metadata:
+  name: muni-workloads-must-have-labels
+spec:
+  match:
+    kinds:
+    - apiGroups: ["apps"]
+      kinds: ["Deployment", "StatefulSet", "DaemonSet"]
+    namespaces: ["muni", "muni-prod", "muni-staging"]
+---
+# ── ConstraintTemplate: NoLatestImageTag ─────────────────────────────────────
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: muniolatestimag
+spec:
+  crd:
+    spec:
+      names:
+        kind: MuniNoLatestImage
+  targets:
+  - target: admission.k8s.gatekeeper.sh
+    rego: |
+      package muniolatestimag
+      violation[{"msg": msg}] {
+        container := input.review.object.spec.template.spec.containers[_]
+        endswith(container.image, ":latest")
+        msg := sprintf("Container '%v' uses ':latest' tag", [container.name])
+      }
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: MuniNoLatestImage
+metadata:
+  name: muni-no-latest-image-tag
+spec:
+  match:
+    kinds:
+    - apiGroups: ["apps"]
+      kinds: ["Deployment", "StatefulSet"]
+    namespaces: ["muni-prod"]  # Enforce strictly in production only
+---
+# ── ConstraintTemplate: NoPrivilegedContainers ───────────────────────────────
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: munionoprivilegedcontainer
+spec:
+  crd:
+    spec:
+      names:
+        kind: MuniNoPrivilegedContainer
+  targets:
+  - target: admission.k8s.gatekeeper.sh
+    rego: |
+      package munionoprivilegedcontainer
+      violation[{"msg": msg}] {
+        container := input.review.object.spec.template.spec.containers[_]
+        container.securityContext.privileged == true
+        msg := sprintf("Container '%v' must not run as privileged", [container.name])
+      }
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: MuniNoPrivilegedContainer
+metadata:
+  name: muni-no-privileged-containers
+spec:
+  match:
+    kinds:
+    - apiGroups: ["apps", ""]
+      kinds: ["Deployment", "StatefulSet", "DaemonSet", "Pod"]
+    namespaces: ["muni", "muni-prod", "muni-staging"]

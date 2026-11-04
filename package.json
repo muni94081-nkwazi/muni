@@ -1,0 +1,53 @@
+{
+  "name": "muni",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MUNI - Uganda E-Commerce Marketplace",
+  "workspaces": [
+    "frontend/customer-web",
+    "frontend/seller-center",
+    "frontend/admin-panel",
+    "backend",
+    "backend/api-gateway",
+    "backend/infrastructure",
+    "backend/services/*"
+  ],
+  "scripts": {
+    "setup": "bash scripts/setup-dev.sh",
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "format": "prettier --write \"**/*.{js,jsx,ts,tsx,json,css,md}\"",
+    "customer-web": "turbo run dev --filter=customer-web",
+    "seller-center": "turbo run dev --filter=seller-center",
+    "admin-panel": "turbo run dev --filter=admin-panel",
+    "deploy": "docker compose --profile services up -d --build",
+    "deploy:web": "docker compose --profile services up -d --build customer-web seller-center admin-panel nginx",
+    "docker:up": "docker compose --profile services up -d",
+    "docker:infra": "docker compose up -d",
+    "docker:down": "docker compose --profile services down",
+    "docker:logs": "docker compose --profile services logs -f",
+    "tls:init": "bash scripts/init-letsencrypt.sh",
+    "tls:renew": "docker compose --profile certbot run --rm certbot renew && docker compose exec nginx nginx -s reload",
+    "nginx:test": "docker compose exec nginx nginx -t",
+    "db:setup": "bash scripts/db-setup.sh",
+    "db:migrate": "bash scripts/db-setup.sh --migrate",
+    "seed": "bash scripts/db-setup.sh --seed",
+    "promote-admin": "bash scripts/promote-admin.sh",
+    "test:e2e": "npm run test:e2e --prefix backend/e2e"
+  },
+  "comment:express-types": "Every backend service runs express 4.x, but @types/multer depends on @types/express@* which resolves to v5. The v5 ParamsDictionary types req.params values as `string | string[]` — wrong for the express 4 runtime, and the source of a large class of TS2345 errors. Declaring the v4 type packages here makes the root the owner of the hoisted copy so every workspace type-checks against express 4.",
+  "devDependencies": {
+    "turbo": "^2.0.0",
+    "prettier": "^3.0.0",
+    "@types/express": "4.17.25",
+    "@types/express-serve-static-core": "4.19.9"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  },
+  "packageManager": "npm@10.0.0",
+  "comment:mobile": "mobile/ is intentionally absent from workspaces above. React Native requires a single hoisted copy of react/react-native and its own Metro haste map; sharing a node_modules tree with the backend services breaks both. It installs and runs standalone (cd mobile && npm install && npx expo start) and has its own package-lock.json."
+}

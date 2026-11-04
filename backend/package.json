@@ -1,0 +1,73 @@
+{
+  "name": "muni-typescript-backend",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": [
+    "src/services/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev --workspace=@muni/auth-service\" \"npm run dev --workspace=@muni/product-service\" \"npm run dev --workspace=@muni/order-service\" \"tsx watch api-gateway/gateway.ts\"",
+    "build": "tsc --noEmit",
+    "start:gateway": "tsx api-gateway/gateway.ts",
+    "test:integration": "jest",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/auto-instrumentations-node": "^0.79.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.221.0",
+    "@opentelemetry/resources": "^2.10.0",
+    "@opentelemetry/sdk-node": "^0.221.0",
+    "@opentelemetry/sdk-trace-base": "^2.10.0",
+    "@opentelemetry/semantic-conventions": "^1.43.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "kafkajs": "^2.2.4",
+    "redis": "^4.7.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@jest/globals": "^29.7.0",
+    "@playwright/test": "^1.49.1",
+    "@types/cors": "^2.8.17",
+    "@types/express": "4.17.25",
+    "@types/jest": "^29.5.13",
+    "@types/jsonwebtoken": "^9.0.7",
+    "@types/node": "^22.10.2",
+    "@types/supertest": "^6.0.2",
+    "concurrently": "^9.1.0",
+    "jest": "^29.7.0",
+    "supertest": "^7.0.0",
+    "ts-jest": "^29.2.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "roots": [
+      "<rootDir>/tests/integration"
+    ],
+    "testMatch": [
+      "**/*.test.ts"
+    ],
+    "transform": {
+      "^.+\\.ts$": [
+        "ts-jest",
+        {
+          "isolatedModules": true,
+          "tsconfig": {
+            "module": "CommonJS",
+            "moduleResolution": "Node",
+            "target": "ES2022",
+            "strict": true,
+            "esModuleInterop": true,
+            "skipLibCheck": true
+          }
+        }
+      ]
+    }
+  }
+}

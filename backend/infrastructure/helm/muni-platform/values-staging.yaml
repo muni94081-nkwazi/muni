@@ -1,0 +1,54 @@
+global:
+  imageTag: staging
+
+configmap:
+  LOG_LEVEL: info
+  NODE_ENV: staging
+
+services:
+  api-gateway:
+    replicaCount: 2
+  auth-service:
+    replicaCount: 2
+  product-service:
+    replicaCount: 2
+  order-service:
+    replicaCount: 2
+  payment-service:
+    replicaCount: 2
+  shipping-service:
+    replicaCount: 2
+  notification-service:
+    replicaCount: 2
+  analytics-service:
+    replicaCount: 2
+  search-service:
+    replicaCount: 2
+  inventory-service:
+    replicaCount: 2
+  review-service:
+    replicaCount: 2
+  currency-service:
+    replicaCount: 2
+  tax-service:
+    replicaCount: 2
+  discount-service:
+    replicaCount: 2
+  wishlist-service:
+    replicaCount: 2
+  cart-service:
+    replicaCount: 2
+  media-service:
+    replicaCount: 2
+  fraud-service:
+    replicaCount: 2
+  return-service:
+    replicaCount: 2
+  dispute-service:
+    replicaCount: 2
+  marketplace-service:
+    replicaCount: 2
+  fulfillment-service:
+    replicaCount: 2
+  checkout-service:
+    replicaCount: 2

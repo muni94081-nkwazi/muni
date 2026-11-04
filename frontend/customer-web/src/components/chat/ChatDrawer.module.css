@@ -1,0 +1,180 @@
+.wrapper {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 999;
+}
+
+.launcher {
+  position: relative;
+  background: var(--color-nav-bg);
+  color: #fff;
+  border: none;
+  border-radius: 30px;
+  padding: 12px 20px;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: var(--shadow-popover);
+}
+
+.badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  background: var(--color-danger);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+}
+
+.drawer {
+  width: 340px;
+  height: 480px;
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-popover);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+}
+
+.header {
+  background: var(--color-nav-bg);
+  color: #fff;
+  padding: var(--space-3) var(--space-4);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.sellerName {
+  font-weight: 700;
+  font-size: var(--text-sm);
+}
+
+.status {
+  font-size: 11px;
+  opacity: 0.85;
+}
+
+.closeBtn {
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: var(--text-lg);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.messages {
+  flex: 1;
+  padding: var(--space-3);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.bubble {
+  max-width: 78%;
+  padding: 8px 12px;
+  border-radius: 14px;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.mine {
+  align-self: flex-end;
+  background: var(--color-nav-bg);
+  color: #fff;
+  border-bottom-right-radius: 3px;
+}
+
+.theirs {
+  align-self: flex-start;
+  background: var(--color-surface-alt);
+  color: var(--color-text-primary);
+  border-bottom-left-radius: 3px;
+}
+
+.systemBubble {
+  align-self: center;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  background: var(--color-surface-alt);
+  padding: 4px 10px;
+  border-radius: 10px;
+}
+
+.typing {
+  align-self: flex-start;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.errorBar {
+  background: #fde8e8;
+  color: var(--color-danger);
+  font-size: 11px;
+  padding: 6px var(--space-3);
+}
+
+.offerZone {
+  padding: 0 var(--space-3) var(--space-2);
+}
+
+.offerToggle {
+  width: 100%;
+  background: none;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 8px;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--color-interactive);
+  cursor: pointer;
+}
+
+.inputRow {
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  gap: var(--space-2);
+}
+
+.input {
+  flex: 1;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  font-size: var(--text-xs);
+  min-width: 0;
+}
+
+.sendBtn {
+  background: var(--color-nav-bg);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 0 var(--space-3);
+  font-weight: 700;
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.sendBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

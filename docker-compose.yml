@@ -1,0 +1,1371 @@
+# ==============================================================================
+# MUNI E-Commerce Platform — full stack
+# ==============================================================================
+#
+# This is the authoritative compose file: infrastructure AND every service.
+# backend/docker-compose.yml is superseded and is no longer merged by the npm
+# scripts (its build contexts point at service directories, but every service
+# Dockerfile is written against the repository root so it can install from the
+# npm workspace).
+#
+# Usage:
+#   docker compose up -d                       # infrastructure only
+#   docker compose --profile services up -d    # infrastructure + all services
+#   docker compose --profile services logs -f api-gateway
+#   docker compose down -v                     # also drops data (re-runs DB init)
+#
+# Infrastructure has no profile, so it always starts; application services sit
+# behind the "services" profile because a front-end-only session rarely needs
+# thirty containers.
+#
+# Ports:
+#   API gateway:  http://localhost:8080
+#   PostgreSQL:   localhost:5432      MongoDB:   localhost:27017
+#   Redis:        localhost:6379      RabbitMQ:  localhost:5672 (UI :15672)
+#   Kafka:        localhost:9092      Kafka UI:  http://localhost:8090
+#   Elasticsearch: localhost:9200     Kibana:    http://localhost:5601
+#   Jaeger UI:    http://localhost:16686
+#
+# Service ports are 4001-4033 (user-service is the exception at 3001) and are
+# listed against each service below. They must match both the service's own
+# `process.env.PORT ?? <default>` and the fallbacks in api-gateway/gateway.ts.
+# ==============================================================================
+
+x-service-defaults: &service-defaults
+  profiles: ["services"]
+  restart: unless-stopped
+  networks: [muni-network]
+  # Every Node service exposes /health/live and reads its own port from PORT,
+  # so one probe covers all of them. `$$PORT` (doubled) escapes compose's own
+  # interpolation so the variable is resolved inside the container at runtime
+  # rather than from the host .env at parse time.
+  #
+  # Probed with node rather than curl/wget: the production images are
+  # node:20-alpine and node is the one binary guaranteed to be there.
+  #
+  # /health/live is deliberate — it answers "is the process up", not "are its
+  # dependencies up". Using /health/ready would make Postgres blipping restart
+  # every service that talks to it, turning one outage into a cascade.
+  healthcheck: &node-healthcheck
+    test: ["CMD-SHELL", "node -e \"require('http').get('http://127.0.0.1:'+process.env.PORT+'/health/live',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+    interval: 30s
+    timeout: 5s
+    retries: 3
+    start_period: 40s
+  # Conservative ceilings so one runaway service cannot starve the host. These
+  # are the small-service defaults; the gateway and the money-path services
+  # override them below.
+  deploy: &small-service-resources
+    resources:
+      limits:
+        cpus: '0.50'
+        memory: 512M
+      reservations:
+        cpus: '0.25'
+        memory: 256M
+
+# Static frontends: nginx on port 80 inside the container, no PORT env.
+x-static-frontend-healthcheck: &static-frontend-healthcheck
+  test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:80/ >/dev/null 2>&1 || exit 1"]
+  interval: 30s
+  timeout: 5s
+  retries: 3
+  start_period: 20s
+
+# The gateway and the two services on the money path. They carry every
+# customer request and the checkout saga respectively, so they get headroom.
+x-critical-service-resources: &critical-service-resources
+  resources:
+    limits:
+      cpus: '1.00'
+      memory: 1G
+    reservations:
+      cpus: '0.50'
+      memory: 512M
+
+# Databases and brokers hold working sets in memory and are shared by all 34
+# services, so they get the largest allocation.
+x-datastore-resources: &datastore-resources
+  resources:
+    limits:
+      cpus: '1.00'
+      memory: 2G
+    reservations:
+      cpus: '0.50'
+      memory: 1G
+
+# Dev-only tooling (Kafka UI, Kibana, Jaeger). Useful, but never at the
+# expense of the services under test.
+x-tooling-resources: &tooling-resources
+  resources:
+    limits:
+      cpus: '0.50'
+      memory: 768M
+    reservations:
+      cpus: '0.10'
+      memory: 128M
+
+# Every service publishes domain events and most read the shared cache.
+x-common-env: &common-env
+  NODE_ENV: ${NODE_ENV:-development}
+  KAFKA_BROKERS: kafka:29092
+  REDIS_URL: redis://redis:6379
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+  # Signs the short-lived identity assertions the gateway mints for every
+  # authenticated request, and that checkout-, order-, payment- and
+  # inventory-service verify before trusting a caller. The gateway refuses to
+  # boot without it, so it lives on the shared anchor rather than per-service:
+  # the value has to be byte-identical everywhere or verification fails, and a
+  # per-service list is one copy-paste away from drifting.
+  # The fallback only keeps a fresh clone bootable. Run `npm run setup` to
+  # generate a real one before any deployment that matters.
+  INTERNAL_IDENTITY_SECRET: ${INTERNAL_IDENTITY_SECRET:-dev-internal-identity-secret-change-me-32chars}
+  # Error tracking. On the shared anchor so every service reports to the same
+  # project with its own `service` tag, rather than only the two that were
+  # wired by hand. Unset disables it — initSentry() is a no-op without a DSN.
+  SENTRY_DSN: ${SENTRY_DSN:-}
+  SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.1}
+  APP_VERSION: ${APP_VERSION:-}
+
+x-postgres-dep: &postgres-dep
+  postgres:
+    condition: service_healthy
+  # Every service that reaches Postgres also waits for migrations to be applied.
+  # service_completed_successfully means "ran and exited 0" — so a failed
+  # migration keeps the dependent services down instead of letting them boot
+  # against a database that has no tables and fail on their first query, far
+  # from the actual cause. Harmless for the few non-Prisma services that share
+  # this anchor: they just wait for the migrator to finish.
+  db-migrator:
+    condition: service_completed_successfully
+
+x-kafka-dep: &kafka-dep
+  kafka:
+    condition: service_healthy
+
+services:
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # INFRASTRUCTURE
+  # ════════════════════════════════════════════════════════════════════════════
+
+  # One-shot init container: applies every service's Prisma migrations, then
+  # exits. Everything using the *postgres-dep anchor waits for it to exit 0.
+  db-migrator:
+    profiles: ["services"]
+    build:
+      context: .
+      dockerfile: backend/migrator/Dockerfile
+    container_name: muni-db-migrator
+    deploy: *tooling-resources
+    # Deliberately no healthcheck. This container is meant to run once and
+    # exit 0, and everything downstream waits on
+    # `condition: service_completed_successfully`. A healthcheck would mark a
+    # correctly-exited migrator "unhealthy" and hold up the whole stack.
+    # NOT `unless-stopped` (the *service-defaults default) — this container is
+    # meant to exit. A restart policy would relaunch it forever after it
+    # succeeds, and it would never satisfy service_completed_successfully.
+    restart: "no"
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: muni
+      PGPASSWORD: muni_secret
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [muni-network]
+
+  # ── Scheduled PostgreSQL backups ────────────────────────────────────────────
+  #
+  # Hourly, which is what makes the one-hour RPO in docs/DISASTER_RECOVERY.md a
+  # fact rather than an intention. Seven days of retention by default.
+  #
+  # Same postgres:16-alpine image as the server, deliberately: pg_dump refuses
+  # to dump from a server newer than itself, so pinning the client to a
+  # different image is a backup that starts failing the day the server is
+  # upgraded — and does so silently, because nothing reads the logs of a
+  # container that is working.
+  #
+  # This is a plain volume on the host. It protects against the failure modes
+  # that actually happen day to day — a bad migration, a dropped table, a
+  # corrupted row — but NOT against losing the host, because the backups are on
+  # it. Shipping these off-box is the remaining work; see the "Off-site copies"
+  # section of docs/DISASTER_RECOVERY.md.
+  postgres-backup:
+    image: postgres:16-alpine
+    container_name: muni-postgres-backup
+    profiles: ["services"]
+    restart: unless-stopped
+    deploy: *tooling-resources
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: muni
+      PGPASSWORD: muni_secret
+      BACKUP_DIR: /backups
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-7}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-3600}
+    volumes:
+      - postgres_backups:/backups
+      - ./scripts/backup-postgres.sh:/usr/local/bin/backup-postgres.sh:ro
+      - ./scripts/restore-postgres.sh:/usr/local/bin/restore-postgres.sh:ro
+    # A sleep loop rather than cron: the alpine image ships no crond, and a loop
+    # is one less moving part to misconfigure. It takes a backup immediately on
+    # start so a fresh deployment has one within seconds rather than an hour.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "[backup] scheduler started, interval=${BACKUP_INTERVAL_SECONDS:-3600}s"
+        while true; do
+          /usr/local/bin/backup-postgres.sh || echo "[backup] run failed; will retry next interval"
+          sleep "${BACKUP_INTERVAL_SECONDS:-3600}"
+        done
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [muni-network]
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: muni-postgres
+    deploy: *datastore-resources
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: muni
+      POSTGRES_PASSWORD: muni_secret
+      # auth-service's database; every other database is created by the init
+      # script below, which only runs on an empty data volume.
+      POSTGRES_DB: muni_auth
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/scripts/postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U muni -d muni_auth"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [muni-network]
+
+  mongo:
+    image: mongo:7.0
+    container_name: muni-mongo
+    deploy: *datastore-resources
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: muni
+      MONGO_INITDB_ROOT_PASSWORD: muni_secret
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      # mongosh is a Node process and takes ~2s to start even when the server is
+      # perfectly healthy; under the I/O load of a full `--build` that overran
+      # the previous 5s timeout and marked mongo unhealthy, which in turn blocks
+      # every service gated on it by service_healthy.
+      timeout: 20s
+      start_period: 40s
+      retries: 5
+    networks: [muni-network]
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: muni-redis
+    deploy: *datastore-resources
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks: [muni-network]
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.1
+    container_name: muni-zookeeper
+    deploy: *datastore-resources
+    restart: unless-stopped
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      # Without this the healthcheck below can never pass, and because Kafka
+      # declares `depends_on: zookeeper: condition: service_healthy`, KAFKA
+      # NEVER STARTS — so nothing that publishes or consumes an event works on
+      # a fresh deployment.
+      #
+      # cp-zookeeper 7.6.1 defaults `4lw.commands.whitelist` to `srvr` alone.
+      # Asking it for `ruok` returns the literal string
+      #   "ruok is not executed because it is not in the whitelist."
+      # which `grep imok` never matches. Zookeeper itself is healthy throughout;
+      # only the probe is refused, which is why the container logs look normal.
+      #
+      # Widened by exactly one read-only command rather than switching the probe
+      # to `srvr`: `ruok` answers "am I serving requests", `srvr` dumps version
+      # and latency and is a weaker liveness signal.
+      #
+      # Set as a JVM system property, NOT as ZOOKEEPER_4LW_COMMANDS_WHITELIST.
+      # That env var reaches the container but Confluent's config generator
+      # silently drops it — the generated /etc/kafka/zookeeper.properties comes
+      # back with only dataDir, dataLogDir, clientPort and tickTime, and no
+      # error anywhere. Verified by reading the file inside the container.
+      KAFKA_OPTS: "-Dzookeeper.4lw.commands.whitelist=srvr,ruok"
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_log:/var/lib/zookeeper/log
+    healthcheck:
+      test: ["CMD-SHELL", "echo ruok | nc -w 2 localhost 2181 | grep imok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [muni-network]
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: muni-kafka
+    deploy: *datastore-resources
+    restart: unless-stopped
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "9092:9092"    # host access, for services run outside compose
+      - "29092:29092"  # inter-container access
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      # Consumers subscribe to topics before any producer has created them
+      # (notification-service subscribes to seven), so auto-create is required
+      # for a cold start to work.
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_RETENTION_HOURS: 168
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:29092 >/dev/null 2>&1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 40s
+    networks: [muni-network]
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: muni-rabbitmq
+    deploy: *datastore-resources
+    restart: unless-stopped
+    ports:
+      - "5672:5672"    # AMQP
+      - "15672:15672"  # Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: muni
+      RABBITMQ_DEFAULT_PASS: muni_secret
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [muni-network]
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
+    container_name: muni-elasticsearch
+    deploy: *datastore-resources
+    restart: unless-stopped
+    ports:
+      - "9200:9200"
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      # Held down deliberately: the default heap makes a dev machine running
+      # thirty other containers swap.
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 40s
+    networks: [muni-network]
+
+  # ── Observability & dev tools ───────────────────────────────────────────────
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: muni-kafka-ui
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/actuator/health >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    deploy: *tooling-resources
+    restart: unless-stopped
+    depends_on: [kafka]
+    ports:
+      - "8090:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: muni-local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+      DYNAMIC_CONFIG_ENABLED: "true"
+    networks: [muni-network]
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.56
+    container_name: muni-jaeger
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:14269/ >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    deploy: *tooling-resources
+    restart: unless-stopped
+    ports:
+      - "16686:16686"   # UI
+      - "4317:4317"     # OTLP gRPC
+      - "4318:4318"     # OTLP HTTP
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    networks: [muni-network]
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.13.4
+    container_name: muni-kibana
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:5601/api/status >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+    deploy: *tooling-resources
+    restart: unless-stopped
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    ports:
+      - "5601:5601"
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+    networks: [muni-network]
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # EDGE
+  # ════════════════════════════════════════════════════════════════════════════
+
+  api-gateway:
+    <<: *service-defaults
+    deploy: *critical-service-resources
+    build:
+      context: .
+      dockerfile: backend/api-gateway/Dockerfile
+    container_name: muni-api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      <<: *common-env
+      PORT: 8080
+      # Every upstream, by container name. These override the localhost
+      # fallbacks in gateway.ts, which only apply outside compose.
+      AUTH_SERVICE_URL: http://auth-service:4001
+      USER_SERVICE_URL: http://user-service:3001
+      PRODUCT_SERVICE_URL: http://product-service:4002
+      ORDER_SERVICE_URL: http://order-service:4003
+      INVENTORY_SERVICE_URL: http://inventory-service:4004
+      PAYMENT_SERVICE_URL: http://payment-service:4005
+      SHIPPING_SERVICE_URL: http://shipping-service:4006
+      NOTIFICATION_SERVICE_URL: http://notification-service:4007
+      RECOMMENDATION_SERVICE_URL: http://recommendation-service:4008
+      ANALYTICS_SERVICE_URL: http://analytics-service:4009
+      SEARCH_SERVICE_URL: http://search-service:4010
+      REVIEW_SERVICE_URL: http://review-service:4011
+      CURRENCY_SERVICE_URL: http://currency-service:4013
+      TAX_SERVICE_URL: http://tax-service:4014
+      DISCOUNT_SERVICE_URL: http://discount-service:4015
+      WISHLIST_SERVICE_URL: http://wishlist-service:4016
+      CART_SERVICE_URL: http://cart-service:4017
+      MEDIA_SERVICE_URL: http://media-service:4018
+      FRAUD_SERVICE_URL: http://fraud-service:4019
+      RETURN_SERVICE_URL: http://return-service:4020
+      DISPUTE_SERVICE_URL: http://dispute-service:4021
+      MARKETPLACE_SERVICE_URL: http://marketplace-service:4022
+      FULFILLMENT_SERVICE_URL: http://fulfillment-service:4023
+      CHECKOUT_SERVICE_URL: http://checkout-service:4024
+      CHAT_SERVICE_URL: http://chat-service:4025
+      BUYER_PROTECTION_SERVICE_URL: http://buyer-protection-service:4026
+      ADVERTISING_SERVICE_URL: http://advertising-service:4027
+      SELLER_EDUCATION_SERVICE_URL: http://seller-education-service:4028
+      QA_SERVICE_URL: http://qa-service:4029
+      LOYALTY_SERVICE_URL: http://loyalty-service:4030
+      CONTAINER_SERVICE_URL: http://container-service:4031
+      SUPPORT_SERVICE_URL: http://support-service:4032
+      NEWSLETTER_SERVICE_URL: http://newsletter-service:4034
+      PRICING_SERVICE_URL: http://pricing-service:4033
+      WHOLESALE_SERVICE_URL: http://order-service:4003
+      TRACKING_SERVICE_URL: http://shipping-service:4006
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev-access-secret-change-me}
+      # Origin the browser actually sends. Under the single-domain nginx every
+      # API call is same-origin, but browsers still attach an Origin header to
+      # POST/PUT/DELETE — and the gateway's cors() rejects unknown origins with
+      # a 500 rather than merely omitting the CORS headers. In production mode
+      # the built-in allowlist is muni.ug only, so a deploy reached over any
+      # other hostname (http://localhost included) must name it here.
+      CORS_ORIGINS: ${PUBLIC_ORIGIN:-http://localhost}
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # IDENTITY
+  # ════════════════════════════════════════════════════════════════════════════
+
+  auth-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: backend/services/auth-service/Dockerfile
+    container_name: muni-auth-service
+    environment:
+      <<: *common-env
+      PORT: 4001
+      DATABASE_URL: postgresql://muni:muni_secret@postgres:5432/muni_auth
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev-access-secret-change-me}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-refresh-secret-change-me}
+      # Marks the shared refreshToken cookie Secure. Deliberately NOT derived
+      # from NODE_ENV: a browser refuses to send a Secure cookie over plain
+      # http, so inferring it would break login on every production-mode deploy
+      # that has not terminated TLS yet. Flip to true once behind HTTPS.
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      # AES-256-GCM key for OAuth provider tokens and TOTP secrets at rest.
+      # Unset in dev falls back to a key committed to this repo (loud warning
+      # at startup); unset with NODE_ENV=production is fatal, because
+      # "encrypted" with a public key is just plaintext with extra steps.
+      # 32 bytes hex: openssl rand -hex 32
+      PII_ENCRYPTION_KEY: ${PII_ENCRYPTION_KEY:-}
+      # Password-reset OTPs are delivered by notification-service, which owns
+      # the email/SMS providers and the message copy. Without this the code is
+      # generated and stored but never reaches anyone.
+      NOTIFICATION_SERVICE_URL: http://notification-service:4007
+      # auth-service is the only service a browser reaches on its own — the
+      # OAuth provider redirects land in the address bar. Same variable name
+      # and same source as the gateway above, so the two cannot disagree about
+      # which origin is public.
+      CORS_ORIGINS: ${PUBLIC_ORIGIN:-http://localhost}
+
+      # ── Social sign-in ──────────────────────────────────────────────────────
+      #
+      # These were documented only in backend/services/auth-service/.env.example
+      # — a file this container never reads. The result was that social sign-in
+      # could not be enabled on the deploy path the README describes, however
+      # the credentials were set: /auth/providers reported all three disabled
+      # and every button answered "temporarily unavailable".
+      #
+      # Each provider stays off until its own credentials are present, which is
+      # exactly what /auth/providers reports, so leaving these blank is a
+      # supported configuration rather than a broken one.
+      #
+      # The callback URLs must match what is registered in each provider's
+      # console, character for character, and must be the PUBLIC origin — a
+      # provider redirects the user's browser there, and no browser can resolve
+      # a container hostname.
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL:-${PUBLIC_ORIGIN:-http://localhost}/api/v1/auth/google/callback}
+      FACEBOOK_APP_ID: ${FACEBOOK_APP_ID:-}
+      FACEBOOK_APP_SECRET: ${FACEBOOK_APP_SECRET:-}
+      FACEBOOK_CALLBACK_URL: ${FACEBOOK_CALLBACK_URL:-${PUBLIC_ORIGIN:-http://localhost}/api/v1/auth/facebook/callback}
+      APPLE_CLIENT_ID: ${APPLE_CLIENT_ID:-}
+      APPLE_TEAM_ID: ${APPLE_TEAM_ID:-}
+      APPLE_KEY_ID: ${APPLE_KEY_ID:-}
+      # The .p8 contents with newlines escaped as \n; oauth.service unescapes.
+      APPLE_PRIVATE_KEY: ${APPLE_PRIVATE_KEY:-}
+      APPLE_CALLBACK_URL: ${APPLE_CALLBACK_URL:-${PUBLIC_ORIGIN:-http://localhost}/api/v1/auth/apple/callback}
+
+      # Where a finished social login is sent back to. Derived from
+      # PUBLIC_ORIGIN for the same reason CORS_ORIGINS is: two names for "the
+      # origin the browser uses" is one deploy away from disagreeing. The old
+      # default was http://localhost:5174/auth/callback — the Vite dev server's
+      # port, which does not exist in a compose deployment at all.
+      #
+      # It is also the origin auth-service builds its /auth/error and
+      # /auth/2fa/challenge redirects from, so it matters even with no provider
+      # configured.
+      FRONTEND_REDIRECT_URL: ${FRONTEND_REDIRECT_URL:-${PUBLIC_ORIGIN:-http://localhost}/auth/callback}
+    depends_on:
+      <<: [*postgres-dep, *kafka-dep]
+      # MFA and password-reset brute-force throttles, single-use TOTP code burn,
+      # and the OAuth handshake nonce + exchange codes. The in-process fallback
+      # makes limits per-replica, and — more importantly for OAuth — a handshake
+      # started on one replica cannot be completed on another, so a multi-replica
+      # deployment needs Redis reachable or social login fails closed.
+      redis:
+        condition: service_healthy
+
+  # Address book, notification preferences, seller trust score and scorecard.
+  user-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: backend/services/user-service/Dockerfile
+    container_name: muni-user-service
+    environment:
+      <<: *common-env
+      PORT: 3001
+      DATABASE_URL: postgresql://muni:muni_secret@postgres:5432/muni_user
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev-access-secret-change-me}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-refresh-secret-change-me}
+      KAFKA_CLIENT_ID: user-service
+    depends_on:
+      <<: [*postgres-dep, *kafka-dep]
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # CATALOGUE
+  # ════════════════════════════════════════════════════════════════════════════
+
+  product-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: backend/services/product-service/Dockerfile
+    container_name: muni-product-service
+    environment:
+      <<: *common-env
+      PORT: 4002
+      DATABASE_URL: postgresql://muni:muni_secret@postgres:5432/muni_products
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+      MONGODB_URI: mongodb://muni:muni_secret@mongo:27017/muni_products?authSource=admin
+      # BullMQ's own connection string. Without it import.queue.ts falls back to
+      # localhost:6379, which inside the container is the container itself.
+      BULLMQ_REDIS_URL: redis://redis:6379
+    volumes:
+      - import_uploads:/tmp/muni-imports
+    depends_on:
+      <<: [*postgres-dep, *kafka-dep]
+      # BullMQ import queue — jobs are lost, not degraded, without Redis.
+      redis:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+
+  # Shares product-service's database: stock lives on ProductVariant.
+  inventory-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: backend/services/inventory-service/Dockerfile
+    container_name: muni-inventory-service
+    environment:
+      <<: *common-env
+      PORT: 4004
+      DATABASE_URL: postgresql://muni:muni_secret@postgres:5432/muni_products
+      RABBITMQ_URL: amqp://muni:muni_secret@rabbitmq:5672
+      # BullMQ expiry sweeper. Read by jobs/expiry.worker.ts, which does not
+      # fall back to REDIS_URL.
+      BULLMQ_REDIS_URL: redis://redis:6379
+    depends_on:
+      <<: [*postgres-dep, *kafka-dep]
+      rabbitmq:
+        condition: service_healthy
+      # Expiry sweeper queue — without it, reservations past their TTL are
+      # never released and the stock they hold leaks.
+      redis:
+        condition: service_healthy
+
+  search-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: backend/services/search-service/Dockerfile
+    container_name: muni-search-service
+    environment:
+      <<: *common-env
+      PORT: 4010
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+    depends_on:
+      <<: *kafka-dep
+      elasticsearch:
+        condition: service_healthy
+
+  recommendation-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: backend/services/recommendation-service/Dockerfile
+    container_name: muni-recommendation-service
+    environment:
+      <<: *common-env
+      PORT: 4008
+    depends_on:
+      <<: *kafka-dep
+      redis:
+        condition: service_healthy
+
+  pricing-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: backend/services/pricing-service/Dockerfile
+    container_name: muni-pricing-service
+    environment:
+      <<: *common-env
+      PORT: 4033
+      DATABASE_URL: postgresql://muni:muni_secret@postgres:5432/muni_pricing
+    depends_on:
+      <<: [*postgres-dep, *kafka-dep]
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # PURCHASE FLOW
+  # ════════════════════════════════════════════════════════════════════════════
+
+  cart-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: backend/services/cart-service/Dockerfile
+    container_name: muni-cart-service
+    environment:
+      <<: *common-env
+      PORT: 4017
+      # The coupon figure in the basket is an estimate from discount-service.
+      # Missing, it resolved to localhost:4015 inside the container and every
+      # coupon silently showed as worth nothing.
+      DISCOUNT_SERVICE_URL: http://discount-service:4015
+    depends_on:
+      <<: *kafka-dep
+      redis:
+        condition: service_healthy
+
+  checkout-service:
+    <<: *service-defaults
+    deploy: *critical-service-resources
+    build:
+      context: .
+      dockerfile: backend/services/checkout-service/Dockerfile
+    container_name: muni-checkout-service
+    environment:
+      <<: *common-env
+      PORT: 4024
+      CART_SERVICE_URL: http://cart-service:4017
+      # The saga re-prices every cart line against the catalogue here. Missing,
+      # it resolved to localhost:4002 and priced nothing.
+      PRODUCT_SERVICE_URL: http://product-service:4002
+      INVENTORY_SERVICE_URL: http://inventory-service:4004
+      ORDER_SERVICE_URL: http://order-service:4003
+      SHIPPING_SERVICE_URL: http://shipping-service:4006
+      TAX_SERVICE_URL: http://tax-service:4014
+      DISCOUNT_SERVICE_URL: http://discount-service:4015
+      FRAUD_SERVICE_URL: http://fraud-service:4019
+      PAYMENT_SERVICE_URL: http://payment-service:4005
+      USER_SERVICE_URL: http://user-service:3001
+    depends_on:
+      <<: *kafka-dep
+      redis:
+        condition: service_healthy
+      cart-service:
+        condition: service_started
+
+  order-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: backend/services/order-service/Dockerfile
+    container_name: muni-order-service
+    environment:
+      <<: *common-env
+      PORT: 4003
+      MONGODB_URI: mongodb://muni:muni_secret@mongo:27017/muni_orders?authSource=admin
+      RABBITMQ_URL: amqp://muni:muni_secret@rabbitmq:5672
+      # Order creation prices every line against the catalogue and holds stock
+      # before writing, so both of these are required — without them the
+      # client falls back to localhost and every order fails to price.
+      PRODUCT_SERVICE_URL: http://product-service:4002
+      INVENTORY_SERVICE_URL: http://inventory-service:4004
+    depends_on:
+      <<: *kafka-dep
+      mongo:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  payment-service:
+    <<: *service-defaults
+    deploy: *critical-service-resources
+    build:
+      context: .
+      dockerfile: backend/services/payment-service/Dockerfile
+    container_name: muni-payment-service
+    environment:
+      <<: *common-env
+      PORT: 4005
+      DATABASE_URL: postgresql://muni:muni_secret@postgres:5432/muni_payment
+      CURRENCY_SERVICE_URL: http://currency-service:4013
+      # Mobile-money credentials. Left blank in dev: the drivers refuse to
+      # charge anyone without them rather than falling back to a fake success.
+      MTN_MOMO_SUBSCRIPTION_KEY: ${MTN_MOMO_SUBSCRIPTION_KEY:-}
+      MTN_MOMO_API_USER: ${MTN_MOMO_API_USER:-}
+      MTN_MOMO_API_KEY: ${MTN_MOMO_API_KEY:-}
+      AIRTEL_CLIENT_ID: ${AIRTEL_CLIENT_ID:-}
+      AIRTEL_CLIENT_SECRET: ${AIRTEL_CLIENT_SECRET:-}
+      # HMAC secrets the inbound collection webhooks are verified against.
+      # These were absent here entirely, which left the secret empty inside the
+      # container — and the MTN/Airtel handlers used to skip verification when
+      # it was empty, so every stack accepted unsigned "payment succeeded"
+      # callbacks. The handlers now fail closed, so an unset value rejects the
+      # webhook rather than trusting it; set a real value for any deployment
+      # that actually receives provider callbacks.
+      #   openssl rand -hex 32
+      MTN_MOMO_WEBHOOK_HMAC_SECRET: ${MTN_MOMO_WEBHOOK_HMAC_SECRET:-}
+      AIRTEL_MONEY_WEBHOOK_HMAC_SECRET: ${AIRTEL_MONEY_WEBHOOK_HMAC_SECRET:-}
+      FLUTTERWAVE_SECRET_KEY: ${FLUTTERWAVE_SECRET_KEY:-}
+      PESAPAL_CONSUMER_KEY: ${PESAPAL_CONSUMER_KEY:-}
+      PESAPAL_CONSUMER_SECRET: ${PESAPAL_CONSUMER_SECRET:-}
+    depends_on:
+      <<: [*postgres-dep, *kafka-dep]
+      redis:
+        condition: service_healthy
+
+  currency-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: backend/services/currency-service/Dockerfile
+    container_name: muni-currency-service
+    environment:
+      <<: *common-env
+      PORT: 4013
+    depends_on:
+      <<: *kafka-dep
+
+  tax-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: backend/services/tax-service/Dockerfile
+    container_name: muni-tax-service
+    environment:
+      <<: *common-env
+      PORT: 4014
+      DATABASE_URL: postgresql://muni:muni_secret@postgres:5432/muni_tax
+    depends_on:
+      <<: [*postgres-dep, *kafka-dep]
+
+  discount-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: backend/services/discount-service/Dockerfile
+    container_name: muni-discount-service
+    environment:
+      <<: *common-env
+      PORT: 4015
+      DATABASE_URL: postgresql://muni:muni_secret@postgres:5432/muni_discount
+    depends_on:
+      <<: [*postgres-dep, *kafka-dep]
+
+  fraud-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: backend/services/fraud-service/Dockerfile
+    container_name: muni-fraud-service
+    environment:
+      <<: *common-env
+      PORT: 4019
+      DATABASE_URL: postgresql://muni:muni_secret@postgres:5432/muni_fraud
+    depends_on:
+      <<: [*postgres-dep, *kafka-dep]
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # FULFILMENT
+  # ════════════════════════════════════════════════════════════════════════════
+
+  shipping-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: backend/services/shipping-service/Dockerfile
+    container_name: muni-shipping-service
+    environment:
+      <<: *common-env
+      PORT: 4006
+      DATABASE_URL: postgresql://muni:muni_secret@postgres:5432/muni_shipping
+    depends_on:
+      # Shipments, pickup stations and package holds are now relational.
+      # *postgres-dep also waits on the migrator, so the service never boots
+      # against a database with no tables and fails on its first query, far
+      # from the real cause.
+      <<: [*postgres-dep, *kafka-dep]
+
+  fulfillment-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: backend/services/fulfillment-service/Dockerfile
+    container_name: muni-fulfillment-service
+    environment:
+      <<: *common-env
+      PORT: 4023
+      DATABASE_URL: postgresql://muni:muni_secret@postgres:5432/muni_fulfillment
+    depends_on:
+      <<: [*postgres-dep, *kafka-dep]
+
+  return-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: backend/services/return-service/Dockerfile
+    container_name: muni-return-service
+    environment:
+      <<: *common-env
+      PORT: 4020
+      DATABASE_URL: postgresql://muni:muni_secret@postgres:5432/muni_return
+    depends_on:
+      <<: [*postgres-dep, *kafka-dep]
+
+  container-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: backend/services/container-service/Dockerfile
+    container_name: muni-container-service
+    # Was 4033, which collided with pricing-service.
+    environment:
+      <<: *common-env
+      PORT: 4031
+      DATABASE_URL: postgresql://muni:muni_secret@postgres:5432/muni_container
+    depends_on:
+      <<: [*postgres-dep, *kafka-dep]
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # TRUST & SUPPORT
+  # ════════════════════════════════════════════════════════════════════════════
+
+  # Durable reviews; enforces verified purchase against the order stream.
+  review-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: backend/services/review-service/Dockerfile
+    container_name: muni-review-service
+    environment:
+      <<: *common-env
+      PORT: 4011
+      DATABASE_URL: postgresql://muni:muni_secret@postgres:5432/muni_review
+      # Fallback path when the local purchase projection has no record yet.
+      ORDER_SERVICE_URL: http://order-service:4003
+      REVIEW_REQUIRE_VERIFIED_PURCHASE: "true"
+      REVIEW_REQUIRE_DELIVERY: "true"
+    depends_on:
+      <<: [*postgres-dep, *kafka-dep]
+
+  dispute-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: backend/services/dispute-service/Dockerfile
+    container_name: muni-dispute-service
+    environment:
+      <<: *common-env
+      PORT: 4021
+      DATABASE_URL: postgresql://muni:muni_secret@postgres:5432/muni_dispute
+      USER_SERVICE_URL: http://user-service:3001
+      BUYER_PROTECTION_SERVICE_URL: http://buyer-protection-service:4026
+      # Authoritative source for order ownership and seller association on filing.
+      ORDER_SERVICE_URL: http://order-service:4003
+    depends_on:
+      <<: [*postgres-dep, *kafka-dep]
+
+  buyer-protection-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: backend/services/buyer-protection-service/Dockerfile
+    container_name: muni-buyer-protection-service
+    environment:
+      <<: *common-env
+      PORT: 4026
+      DATABASE_URL: postgresql://muni:muni_secret@postgres:5432/muni_buyer_protection
+      USER_SERVICE_URL: http://user-service:3001
+      # Filing a protection claim verifies with order-service that the order
+      # belongs to the claimant. Without this the client falls back to
+      # localhost, which inside the container is the container itself, and every
+      # claim fails closed with "could not verify the order".
+      ORDER_SERVICE_URL: http://order-service:4003
+    depends_on:
+      <<: [*postgres-dep, *kafka-dep]
+
+  # Helpdesk: buyer/seller support tickets, distinct from order disputes.
+  support-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: backend/services/support-service/Dockerfile
+    container_name: muni-support-service
+    environment:
+      <<: *common-env
+      PORT: 4032
+      DATABASE_URL: postgresql://muni:muni_secret@postgres:5432/muni_support
+      USER_SERVICE_URL: http://user-service:3001
+      ORDER_SERVICE_URL: http://order-service:4003
+    depends_on:
+      <<: [*postgres-dep, *kafka-dep]
+
+  # Newsletter subscription capture, consent record and unsubscribe.
+  #
+  # NEWSLETTER_SINGLE_OPT_IN is left unset (double opt-in) on purpose: no email
+  # delivery is wired up yet, so a new address is stored PENDING with its
+  # consent evidence and is not counted as a confirmed subscriber until a
+  # confirmation is actually followed.
+  newsletter-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: backend/services/newsletter-service/Dockerfile
+    container_name: muni-newsletter-service
+    ports: [4034:4034]
+    environment:
+      <<: *common-env
+      PORT: 4034
+      DATABASE_URL: postgresql://muni:muni_secret@postgres:5432/muni_newsletter
+    depends_on:
+      <<: *postgres-dep
+
+  chat-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: backend/services/chat-service/Dockerfile
+    container_name: muni-chat-service
+    environment:
+      <<: *common-env
+      PORT: 4025
+      MONGODB_URI: mongodb://muni:muni_secret@mongo:27017/muni_chat?authSource=admin
+      # The chat websocket is the one surface a browser opens directly — it does
+      # not pass through the gateway, so there is no signed assertion on the
+      # handshake. chat-service verifies the user's own access token instead,
+      # which means it needs the same signing secret auth-service and the
+      # gateway use. Must be byte-identical or every socket is refused.
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev-access-secret-change-me}
+      # Socket.io CORS allowlist. Was `origin: '*'` in code, which let any site
+      # open a socket against this service.
+      CORS_ORIGINS: ${PUBLIC_ORIGIN:-http://localhost},http://localhost:5173
+    depends_on:
+      <<: *kafka-dep
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # PLATFORM
+  # ════════════════════════════════════════════════════════════════════════════
+
+  # Delivers over SMS (Africa's Talking / Twilio), WhatsApp, FCM push and SMTP.
+  # With no credentials set it runs in dry-run and logs what it would have sent,
+  # so the pipeline is exercisable locally without silently claiming delivery.
+  notification-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: backend/services/notification-service/Dockerfile
+    container_name: muni-notification-service
+    environment:
+      <<: *common-env
+      PORT: 4007
+      DATABASE_URL: postgresql://muni:muni_secret@postgres:5432/muni_notification
+      # Resolves recipient phone/email and channel opt-ins.
+      USER_SERVICE_URL: http://user-service:3001
+      NOTIFICATION_DRY_RUN: ${NOTIFICATION_DRY_RUN:-true}
+      DEFAULT_COUNTRY: ${DEFAULT_COUNTRY:-UG}
+      AT_ENABLED: ${AT_ENABLED:-false}
+      AT_USERNAME: ${AT_USERNAME:-sandbox}
+      AT_API_KEY: ${AT_API_KEY:-}
+      AT_SENDER_ID: ${AT_SENDER_ID:-}
+      TWILIO_ENABLED: ${TWILIO_ENABLED:-false}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_FROM_NUMBER: ${TWILIO_FROM_NUMBER:-}
+      TWILIO_WHATSAPP_FROM: ${TWILIO_WHATSAPP_FROM:-}
+      FCM_ENABLED: ${FCM_ENABLED:-false}
+      FCM_PROJECT_ID: ${FCM_PROJECT_ID:-}
+      FCM_CLIENT_EMAIL: ${FCM_CLIENT_EMAIL:-}
+      FCM_PRIVATE_KEY: ${FCM_PRIVATE_KEY:-}
+      SMTP_ENABLED: ${SMTP_ENABLED:-false}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+    depends_on:
+      <<: [*postgres-dep, *kafka-dep]
+
+  media-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: backend/services/media-service/Dockerfile
+    container_name: muni-media-service
+    environment:
+      <<: *common-env
+      PORT: 4018
+      # Where uploaded files land, and the URL a browser uses to fetch them.
+      # The public URL goes through the gateway prefix this service also serves
+      # them under, so port 4018 stays unpublished.
+      UPLOAD_DIR: /app/uploads
+      CDN_BASE_URL: ${PUBLIC_ORIGIN:-http://localhost}/api/v1/media/uploads
+    volumes:
+      - media_uploads:/app/uploads
+    depends_on:
+      <<: *kafka-dep
+
+  analytics-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: backend/services/analytics-service/Dockerfile
+    container_name: muni-analytics-service
+    environment:
+      <<: *common-env
+      PORT: 4009
+    depends_on:
+      <<: *kafka-dep
+      redis:
+        condition: service_healthy
+
+  marketplace-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: backend/services/marketplace-service/Dockerfile
+    container_name: muni-marketplace-service
+    environment:
+      <<: *common-env
+      PORT: 4022
+      DATABASE_URL: postgresql://muni:muni_secret@postgres:5432/muni_marketplace
+    depends_on:
+      <<: [*postgres-dep, *kafka-dep]
+
+  wishlist-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: backend/services/wishlist-service/Dockerfile
+    container_name: muni-wishlist-service
+    environment:
+      <<: *common-env
+      PORT: 4016
+      DATABASE_URL: postgresql://muni:muni_secret@postgres:5432/muni_wishlist
+    depends_on:
+      <<: [*postgres-dep, *kafka-dep]
+
+  loyalty-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: backend/services/loyalty-service/Dockerfile
+    container_name: muni-loyalty-service
+    environment:
+      <<: *common-env
+      PORT: 4030
+      DATABASE_URL: postgresql://muni:muni_secret@postgres:5432/muni_loyalty
+    depends_on:
+      <<: [*postgres-dep, *kafka-dep]
+
+  advertising-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: backend/services/advertising-service/Dockerfile
+    container_name: muni-advertising-service
+    environment:
+      <<: *common-env
+      PORT: 4027
+      DATABASE_URL: postgresql://muni:muni_secret@postgres:5432/muni_advertising
+    depends_on:
+      <<: [*postgres-dep, *kafka-dep]
+
+  qa-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: backend/services/qa-service/Dockerfile
+    container_name: muni-qa-service
+    environment:
+      <<: *common-env
+      PORT: 4029
+      DATABASE_URL: postgresql://muni:muni_secret@postgres:5432/muni_qa
+    depends_on:
+      <<: [*postgres-dep, *kafka-dep]
+
+  seller-education-service:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: backend/services/seller-education-service/Dockerfile
+    container_name: muni-seller-education-service
+    environment:
+      <<: *common-env
+      PORT: 4028
+      DATABASE_URL: postgresql://muni:muni_secret@postgres:5432/muni_seller_education
+    depends_on:
+      <<: [*postgres-dep, *kafka-dep]
+
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # EDGE + FRONTENDS
+  # ════════════════════════════════════════════════════════════════════════════
+  #
+  # Single-domain topology. Only `nginx` publishes a host port; the three SPA
+  # containers are reachable only on muni-network, by service name, which is
+  # what nginx/nginx.conf upstreams point at.
+  #
+  #   http://localhost/         → customer-web
+  #   http://localhost/seller/  → seller-center
+  #   http://localhost/admin/   → admin-panel
+  #   http://localhost/api/     → api-gateway
+  #
+  # Build context is ./frontend for all three so they share spa.nginx.conf.
+
+  customer-web:
+    <<: *service-defaults
+    healthcheck: *static-frontend-healthcheck
+    build:
+      context: ./frontend
+      dockerfile: customer-web/Dockerfile
+    container_name: muni-customer-web
+    expose: ["80"]
+
+  seller-center:
+    <<: *service-defaults
+    healthcheck: *static-frontend-healthcheck
+    build:
+      context: ./frontend
+      dockerfile: seller-center/Dockerfile
+    container_name: muni-seller-center
+    expose: ["80"]
+
+  admin-panel:
+    <<: *service-defaults
+    healthcheck: *static-frontend-healthcheck
+    build:
+      context: ./frontend
+      dockerfile: admin-panel/Dockerfile
+    container_name: muni-admin-panel
+    expose: ["80"]
+
+  nginx:
+    <<: *service-defaults
+    image: nginx:1.27-alpine
+    container_name: muni-nginx
+    deploy: *tooling-resources
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      # Which config is mounted decides HTTP vs HTTPS. Defaults to the plain
+      # HTTP one so a fresh clone deploys with no certificates present; set
+      # NGINX_CONF=nginx.ssl.conf once certs exist. Both files include the
+      # shared routing from ./nginx/includes, so they cannot drift apart.
+      - ./nginx/${NGINX_CONF:-nginx.conf}:/etc/nginx/nginx.conf:ro
+      - ./nginx/includes:/etc/nginx/includes:ro
+      # Written by the certbot service, read here. Named volumes rather than
+      # bind mounts so cert private keys never land in the working tree.
+      - certbot_conf:/etc/letsencrypt:ro
+      - certbot_webroot:/var/www/certbot:ro
+    # service_healthy, not the bare list form: nginx resolves every upstream
+    # hostname when it parses its config and exits if one does not resolve yet.
+    # Waiting for "created" is not enough — it has to be answering requests.
+    depends_on:
+      customer-web:
+        condition: service_healthy
+      seller-center:
+        condition: service_healthy
+      admin-panel:
+        condition: service_healthy
+      # service_healthy, not service_started. The gateway exits at startup when
+      # INTERNAL_IDENTITY_SECRET is missing or too short, and "started" is
+      # satisfied by a container that is about to die — so nginx would come up,
+      # resolve the upstream, and answer every /api/ call with a 502 that says
+      # nothing about the actual cause. Waiting on the health probe surfaces the
+      # failure as a failed dependency instead. It inherits *node-healthcheck
+      # from *service-defaults, which polls /health/live with a 40s start_period.
+      api-gateway:
+        condition: service_healthy
+      # Listed because nginx.conf declares a chat_service upstream for the
+      # Socket.io location; an unresolvable upstream aborts nginx at startup.
+      chat-service:
+        condition: service_started
+    healthcheck:
+      # Deliberately probes :80, not :443. Under nginx.ssl.conf port 80 answers
+      # with a 301 to https, and `wget -qO-` treats that as success without
+      # needing to trust the certificate — so one healthcheck works for both
+      # configs. --spider avoids downloading the SPA shell on every probe.
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  # ── TLS certificates (Let's Encrypt) ────────────────────────────────────────
+  # Profile-gated: never starts as part of `up`, only via `docker compose run`.
+  # Driven by `npm run tls:init` (first issue) and `npm run tls:renew`.
+  certbot:
+    image: certbot/certbot:latest
+    container_name: muni-certbot
+    deploy: *tooling-resources
+    profiles: ["certbot"]
+    volumes:
+      - certbot_conf:/etc/letsencrypt
+      - certbot_webroot:/var/www/certbot
+    networks: [muni-network]
+# ══════════════════════════════════════════════════════════════════════════════
+# VOLUMES & NETWORKS
+# ══════════════════════════════════════════════════════════════════════════════
+
+volumes:
+  postgres_data:
+  # Hourly pg_dump output, seven days deep. Separate volume from postgres_data
+  # on purpose: `docker compose down -v` during a bad day would otherwise
+  # destroy the database and its backups in the same command.
+  postgres_backups:
+  mongo_data:
+  redis_data:
+  zookeeper_data:
+  zookeeper_log:
+  kafka_data:
+  rabbitmq_data:
+  elasticsearch_data:
+  import_uploads:
+  media_uploads:
+  # Let's Encrypt state. certbot_conf holds the issued certs and private keys;
+  # certbot_webroot is the shared directory the ACME http-01 challenge is
+  # written into by certbot and served from by nginx.
+  certbot_conf:
+  certbot_webroot:
+
+networks:
+  # Created by compose. It was previously declared `external: true`, which made
+  # every `up` fail until someone had run `docker network create muni-network`
+  # by hand.
+  muni-network:
+    driver: bridge

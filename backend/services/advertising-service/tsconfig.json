@@ -1,0 +1,22 @@
+// `rootDir` is pinned to backend/ — the same value tsconfig.build.json uses.
+// src/ imports from ../../shared, so with `rootDir` unset TypeScript infers the
+// common source directory from whichever files the import graph happens to pull
+// in, and the emitted layout under outDir shifts with it. backend/ is the one
+// directory that contains every input, so pinning it makes the output path
+// stable: dist/services/advertising-service/src/app.js — what package.json's
+// `start` script runs. Note it must stay OUTSIDE the service dir; any rootDir
+// inside it makes the ../../shared imports fail with TS6059.
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "rootDir": "../../",
+    "outDir": "dist"
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

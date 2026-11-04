@@ -1,0 +1,185 @@
+---
+# KEDA ScaledObjects — Kafka-driven autoscaling for event-heavy services
+# KEDA watches Kafka consumer group lag and scales pods up/down automatically.
+# Install KEDA: helm install keda kedacore/keda --namespace keda --create-namespace
+
+# ── Order Service — scales on order-events lag ────────────────────────────────
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: order-service-scaler
+  namespace: muni
+spec:
+  scaleTargetRef:
+    name: order-service
+  pollingInterval: 15
+  cooldownPeriod: 60
+  minReplicaCount: 2
+  maxReplicaCount: 20
+  triggers:
+  - type: kafka
+    metadata:
+      bootstrapServers: kafka.muni.svc.cluster.local:9092
+      consumerGroup: order-service-group
+      topic: order-events
+      lagThreshold: "50"
+      offsetResetPolicy: latest
+---
+# ── Checkout Service — scales on checkout-events lag ────────────────────────
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: checkout-service-scaler
+  namespace: muni
+spec:
+  scaleTargetRef:
+    name: checkout-service
+  pollingInterval: 15
+  cooldownPeriod: 60
+  minReplicaCount: 2
+  maxReplicaCount: 20
+  triggers:
+  - type: kafka
+    metadata:
+      bootstrapServers: kafka.muni.svc.cluster.local:9092
+      consumerGroup: checkout-service-group
+      topic: checkout-events
+      lagThreshold: "30"
+      offsetResetPolicy: latest
+---
+# ── Notification Service — scales on notification-events lag ─────────────────
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: notification-service-scaler
+  namespace: muni
+spec:
+  scaleTargetRef:
+    name: notification-service
+  pollingInterval: 15
+  cooldownPeriod: 120
+  minReplicaCount: 2
+  maxReplicaCount: 15
+  triggers:
+  - type: kafka
+    metadata:
+      bootstrapServers: kafka.muni.svc.cluster.local:9092
+      consumerGroup: notification-service-order-group
+      topic: order-events
+      lagThreshold: "100"
+      offsetResetPolicy: latest
+---
+# ── Fraud Service — scales on checkout-events lag ────────────────────────────
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: fraud-service-scaler
+  namespace: muni
+spec:
+  scaleTargetRef:
+    name: fraud-service
+  pollingInterval: 10
+  cooldownPeriod: 60
+  minReplicaCount: 2
+  maxReplicaCount: 10
+  triggers:
+  - type: kafka
+    metadata:
+      bootstrapServers: kafka.muni.svc.cluster.local:9092
+      consumerGroup: fraud-service-group
+      topic: checkout-events
+      lagThreshold: "20"
+      offsetResetPolicy: latest
+---
+# ── Search Service — scales on product-events lag ────────────────────────────
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: search-service-scaler
+  namespace: muni
+spec:
+  scaleTargetRef:
+    name: search-service
+  pollingInterval: 30
+  cooldownPeriod: 120
+  minReplicaCount: 2
+  maxReplicaCount: 10
+  triggers:
+  - type: kafka
+    metadata:
+      bootstrapServers: kafka.muni.svc.cluster.local:9092
+      consumerGroup: search-service-product-sync
+      topic: product-events
+      lagThreshold: "100"
+      offsetResetPolicy: latest
+---
+# ── Inventory Service — scales on order-events lag ───────────────────────────
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: inventory-service-scaler
+  namespace: muni
+spec:
+  scaleTargetRef:
+    name: inventory-service
+  pollingInterval: 15
+  cooldownPeriod: 60
+  minReplicaCount: 2
+  maxReplicaCount: 15
+  triggers:
+  - type: kafka
+    metadata:
+      bootstrapServers: kafka.muni.svc.cluster.local:9092
+      consumerGroup: inventory-service-order-group
+      topic: order-events
+      lagThreshold: "50"
+      offsetResetPolicy: latest
+---
+# ── Analytics Service — scales on multi-topic lag ────────────────────────────
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: analytics-service-scaler
+  namespace: muni
+spec:
+  scaleTargetRef:
+    name: analytics-service
+  pollingInterval: 30
+  cooldownPeriod: 180
+  minReplicaCount: 1
+  maxReplicaCount: 8
+  triggers:
+  - type: kafka
+    metadata:
+      bootstrapServers: kafka.muni.svc.cluster.local:9092
+      consumerGroup: analytics-service-orders
+      topic: order-events
+      lagThreshold: "200"
+      offsetResetPolicy: latest
+  - type: kafka
+    metadata:
+      bootstrapServers: kafka.muni.svc.cluster.local:9092
+      consumerGroup: analytics-service-payments
+      topic: payment-events
+      lagThreshold: "200"
+      offsetResetPolicy: latest
+---
+# ── API Gateway — scales on Redis rate-limiter request queue ──────────────────
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: api-gateway-scaler
+  namespace: muni
+spec:
+  scaleTargetRef:
+    name: api-gateway
+  pollingInterval: 10
+  cooldownPeriod: 30
+  minReplicaCount: 3
+  maxReplicaCount: 30
+  triggers:
+  - type: redis
+    metadata:
+      address: redis.muni.svc.cluster.local:6379
+      listName: gateway:request-queue
+      listLength: "100"

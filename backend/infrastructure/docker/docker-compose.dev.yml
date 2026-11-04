@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  api-gateway:
+    volumes:
+      - ../../services/api-gateway/src:/app/src
+    environment:
+      - NODE_ENV=development
+    command: npm run dev
+
+  auth-service:
+    volumes:
+      - ../../services/auth-service/src:/app/src
+    environment:
+      - NODE_ENV=development
+    command: npm run dev
+
+  product-service:
+    volumes:
+      - ../../services/product-service/src:/app/src
+    environment:
+      - NODE_ENV=development
+    command: npm run dev
+
+  order-service:
+    volumes:
+      - ../../services/order-service/src:/app/src
+    environment:
+      - NODE_ENV=development
+    command: npm run dev
+
+  user-service:
+    volumes:
+      - ../../services/user-service/src:/app/src
+    environment:
+      - NODE_ENV=development
+    command: npm run dev
+
+  payment-service:
+    volumes:
+      - ../../services/payment-service/src:/app/src
+    environment:
+      - NODE_ENV=development
+    command: npm run dev
+
+  shipping-service:
+    volumes:
+      - ../../services/shipping-service/src:/app/src
+    environment:
+      - NODE_ENV=development
+    command: npm run dev
+
+  notification-service:
+    volumes:
+      - ../../services/notification-service/src:/app/src
+    environment:
+      - NODE_ENV=development
+    command: npm run dev
+
+  recommendation-service:
+    volumes:
+      - ../../services/recommendation-service/src:/app/src
+    environment:
+      - NODE_ENV=development
+    command: npm run dev
+
+  analytics-service:
+    volumes:
+      - ../../services/analytics-service/src:/app/src
+    environment:
+      - NODE_ENV=development
+    command: npm run dev

@@ -1,0 +1,127 @@
+// ─── buyer-protection-service schema ──────────────────────────────────────────
+//
+// Owns database `muni_buyer_protection`. Replaces two Maps: `claimsStore` in
+// buyer-protection.service.ts and `holdStore` in escrow-hold.service.ts.
+//
+// The escrow hold is the more serious of the two. It is the record of whose
+// money is frozen and when it may be paid out; losing it on restart means a
+// seller's payout either never releases or releases with no record that a
+// dispute was blocking it. payment-service moves the money — this service
+// decides when it is allowed to.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ClaimReason {
+  ITEM_NOT_RECEIVED
+  NOT_AS_DESCRIBED
+  COUNTERFEIT
+  DAMAGED
+}
+
+enum ClaimStatus {
+  FILED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+}
+
+model ProtectionClaim {
+  id          String @id
+  claimNumber String @unique @map("claim_number")
+
+  orderId   String @map("order_id")
+  userId    String @map("user_id")
+  productId String @map("product_id")
+
+  reason         ClaimReason
+  claimAmountUGX Decimal     @map("claim_amount_ugx") @db.Decimal(14, 2)
+  status         ClaimStatus
+
+  adminNotes String? @map("admin_notes")
+  // resolveClaim() wrote this through an `as any` cast, so it never appeared
+  // on the ProtectionClaim interface. Modelled properly here.
+  resolutionNotes String? @map("resolution_notes")
+
+  createdAt  DateTime  @map("created_at")
+  resolvedAt DateTime? @map("resolved_at")
+
+  @@index([userId, createdAt])
+  @@index([status])
+  @@index([orderId])
+  @@map("protection_claims")
+}
+
+enum EscrowHoldStatus {
+  HELD
+  DISPUTE_HELD
+  RELEASED
+  REFUNDED
+}
+
+enum ReleaseTrigger {
+  BUYER_CONFIRMED
+  AUTO_7_DAY
+  ADMIN_OVERRIDE
+  DISPUTE_RESOLVED_SELLER_FAVOR
+}
+
+enum RefundTrigger {
+  DISPUTE_RESOLVED_BUYER_FAVOR
+  ADMIN_OVERRIDE
+}
+
+model EscrowHold {
+  id String @id
+
+  /// The Map was keyed by `orderId` or `orderId:subOrderId`, not by id, and
+  /// that key is what every lookup in the service uses. It is stored as a real
+  /// column rather than expressed as @@unique([orderId, subOrderId]) because
+  /// Postgres treats NULLs as distinct in a unique index: two holds for the
+  /// same order with a null subOrderId would both be allowed, which is exactly
+  /// the collision the Map made impossible.
+  holdKey String @unique @map("hold_key")
+
+  orderId    String  @map("order_id")
+  subOrderId String? @map("sub_order_id")
+  buyerId    String  @map("buyer_id")
+  sellerId   String  @map("seller_id")
+
+  amount   Decimal @db.Decimal(14, 2)
+  currency String
+
+  status EscrowHoldStatus
+
+  /// Set on verified delivery — starts the auto-release clock.
+  deliveredAt DateTime? @map("delivered_at")
+  /// deliveredAt + the configured auto-release window. Null until delivery.
+  autoReleaseAt DateTime? @map("auto_release_at")
+  /// Shipping's promised date. A trust-score signal only; the escrow timer
+  /// always counts from actual delivery.
+  expectedDeliveryAt DateTime? @map("expected_delivery_at")
+
+  /// Set while status is DISPUTE_HELD.
+  activeDisputeId String? @map("active_dispute_id")
+
+  releasedAt     DateTime?       @map("released_at")
+  releaseTrigger ReleaseTrigger? @map("release_trigger")
+  refundedAt     DateTime?       @map("refunded_at")
+  refundTrigger  RefundTrigger?  @map("refund_trigger")
+
+  createdAt DateTime @map("created_at")
+  updatedAt DateTime @map("updated_at")
+
+  @@index([sellerId])
+  // The auto-release sweep's exact predicate: HELD holds whose clock has run
+  // out, ordered by the date it compares against.
+  @@index([status, autoReleaseAt])
+  @@index([orderId])
+  @@map("escrow_holds")
+}

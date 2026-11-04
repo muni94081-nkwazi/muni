@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>You left items in your MUNI cart!</title>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 20px; }
+    .container { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; padding: 32px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+    .header { text-align: center; border-bottom: 2px solid #f1f5f9; padding-bottom: 20px; }
+    .logo { font-size: 24px; font-weight: 800; color: #0284c7; letter-spacing: 1px; }
+    .cart-item { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #f1f5f9; padding: 16px 0; }
+    .btn { display: block; width: 100%; text-align: center; background-color: #0284c7; color: #ffffff; font-weight: 600; text-decoration: none; padding: 14px 0; border-radius: 8px; margin-top: 24px; }
+    .discount-banner { background: #f0fdf4; border: 1px dashed #22c55e; color: #15803d; padding: 12px; border-radius: 8px; text-align: center; margin-top: 16px; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="logo">MUNI E-COMMERCE</div>
+      <h2>Don't miss out on your favorite items!</h2>
+      <p>We saved your cart so you can pick up right where you left off.</p>
+    </div>
+
+    <div class="discount-banner">
+      🎉 Use code <strong>COMEBACK10</strong> for 10% OFF your restored cart!
+    </div>
+
+    <div class="cart-items">
+      {{#each items}}
+      <div class="cart-item">
+        <div>
+          <strong>{{this.productName}}</strong><br>
+          <small>Quantity: {{this.quantity}}</small>
+        </div>
+        <div><strong>{{this.price}} {{../currency}}</strong></div>
+      </div>
+      {{/each}}
+    </div>
+
+    <a href="{{restoreUrl}}" class="btn">Complete Your Order Now &rarr;</a>
+  </div>
+</body>
+</html>

@@ -1,0 +1,2 @@
+export interface Category { id: number; name: string; slug: string; parentId: number | null; imageUrl: string | null; productCount: number; }
+export interface Product { id: string; name: string; slug: string; description: string; price: number; compareAtPrice: number | null; imageUrls: string[]; categoryId: number; vendorId: string; sku: string; stock: number; averageRating: number; reviewCount: number; tags: string[]; status: 'active' | 'inactive' | 'pending' | 'flagged'; currency: string; }

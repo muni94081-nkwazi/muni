@@ -1,0 +1,61 @@
+{
+  "title": "MUNI Business Metrics",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "refresh": "1m",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "GMV (Last 24h)",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [{ "expr": "sum(increase(payment_revenue_total[24h]))", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "currencyUSD" } }
+    },
+    {
+      "type": "stat",
+      "title": "Orders per Hour",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "targets": [{ "expr": "sum(increase(orders_created_total[1h]))", "refId": "A" }]
+    },
+    {
+      "type": "stat",
+      "title": "Payment Success Rate",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "targets": [{ "expr": "sum(rate(payment_successes_total[5m])) / sum(rate(payment_attempts_total[5m]))", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "percentunit" } }
+    },
+    {
+      "type": "stat",
+      "title": "Fraud Blocks per Hour",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "targets": [{ "expr": "sum(increase(fraud_blocks_total[1h]))", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Active Cart Sessions",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [{ "expr": "cart_active_sessions", "legendFormat": "Active Sessions" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Checkout Conversion Rate",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [{ "expr": "sum(rate(orders_created_total[5m])) / sum(rate(cart_checkouts_started_total[5m]))", "legendFormat": "Conversion Rate" }],
+      "fieldConfig": { "defaults": { "unit": "percentunit" } }
+    },
+    {
+      "type": "table",
+      "title": "Top Product Categories",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "targets": [{ "expr": "topk(10, sum(increase(product_views_total[1h])) by (category))", "format": "table" }]
+    },
+    {
+      "type": "stat",
+      "title": "Seller Registrations Today",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "targets": [{ "expr": "sum(increase(seller_registrations_total[24h]))", "refId": "A" }]
+    }
+  ]
+}

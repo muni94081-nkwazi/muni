@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#69B8D6" />
+    <link rel="icon" type="image/svg+xml" href="/icons/moon.svg" />
+    <title>Muni-Uganda</title>
+    <meta name="description" content="MUNI: phones, fashion, home goods and groceries, delivered. Pay with MTN Mobile Money or Airtel Money." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+    <!--
+      LCP hero. The homepage hero is currently served from placehold.co
+      (HERO_BANNERS in src/pages/HomePage.tsx), so the win available today is
+      overlapping that origin's DNS + TLS handshake with HTML parsing rather
+      than paying for it when the <img> is discovered.
+
+      There is deliberately NO `<link rel="preload" as="image">` here yet: the
+      hero URL is chosen at runtime from a rotating array, so a static preload
+      would fetch a file the page may never render — a wasted round-trip on the
+      exact connection we're trying to protect, plus a "preloaded but not used"
+      console warning.
+
+      When real hero art lands in /public/assets, replace the preconnect below
+      with a preload of the FIRST banner only:
+        <link rel="preload" as="image" href="/assets/hero-1.avif" fetchpriority="high" />
+      The <img> itself already carries fetchpriority="high" + loading="eager"
+      via <OptimizedImage priority> (see HomePage.tsx).
+    -->
+    <link rel="preconnect" href="https://placehold.co" crossorigin />
+
+    <!--
+      Fonts load NON-BLOCKING. As a plain <link rel="stylesheet"> this was a
+      render-blocking request to a third origin: nothing painted until DNS +
+      TLS + fetch to fonts.googleapis.com completed, which on a Ugandan 3G link
+      is ~600-900 ms of white screen before the LCP element even starts.
+
+      `media="print"` makes the browser fetch it at low priority without
+      blocking render; a swap to `all` promotes it once it arrives.
+      The <noscript> copy keeps fonts working with JS disabled.
+
+      That swap used to be an inline `onload="this.media='all'"` attribute.
+      Inline event handlers are inline script as far as CSP is concerned, so
+      under the `script-src 'self'` policy the edge now sends, the handler never
+      ran — the stylesheet stayed `media="print"` forever and not one glyph was
+      ever restyled. It lives in src/main.tsx instead, where it is ordinary
+      module code the policy allows. Do not put it back inline.
+
+      Dropped JetBrains Mono (2 weights) from the request entirely: nothing
+      renders it. styles/variables.css defines --font-mono as the system stack
+      ('SFMono-Regular', 'Consolas', monospace) and that is the var every
+      component actually uses, so those two weights were downloaded and never
+      applied to a single glyph.
+    -->
+    <link
+      id="webfonts"
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap"
+      rel="stylesheet"
+      media="print"
+    />
+    <noscript>
+      <link
+        href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap"
+        rel="stylesheet"
+      />
+    </noscript>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

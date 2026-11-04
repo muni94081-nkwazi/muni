@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: muni-config
+  namespace: muni
+data:
+  KAFKA_BROKERS: kafka:9092
+  REDIS_URL: redis://redis:6379
+  ELASTICSEARCH_URL: http://elasticsearch:9200
+  NODE_ENV: production
+  LOG_LEVEL: info
+  AUTH_SERVICE_URL: http://auth-service:4001
+  PRODUCT_SERVICE_URL: http://product-service:4002
+  ORDER_SERVICE_URL: http://order-service:4003
+  PAYMENT_SERVICE_URL: http://payment-service:4004
+  SHIPPING_SERVICE_URL: http://shipping-service:4005
+  NOTIFICATION_SERVICE_URL: http://notification-service:4007
+  CART_SERVICE_URL: http://cart-service:4017
+  INVENTORY_SERVICE_URL: http://inventory-service:4011
+  TAX_SERVICE_URL: http://tax-service:4014
+  DISCOUNT_SERVICE_URL: http://discount-service:4015
+  FRAUD_SERVICE_URL: http://fraud-service:4019
+  CURRENCY_SERVICE_URL: http://currency-service:4013
+  MARKETPLACE_SERVICE_URL: http://marketplace-service:4022
+  FULFILLMENT_SERVICE_URL: http://fulfillment-service:4023
+  CHECKOUT_SERVICE_URL: http://checkout-service:4024

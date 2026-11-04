@@ -1,0 +1,118 @@
+name: E2E — checkout flow
+
+# Separate from ci.yml on purpose. This job boots the whole stack and takes
+# minutes; the unit suite must stay fast and must never depend on Docker.
+#
+# `workflow_dispatch` so it can be run on demand, plus PRs that touch the money
+# path — the services this test actually exercises. Running it on every PR
+# would add ~15 minutes to changes that cannot affect it.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'backend/api-gateway/**'
+      - 'backend/services/auth-service/**'
+      - 'backend/services/product-service/**'
+      - 'backend/services/inventory-service/**'
+      - 'backend/services/cart-service/**'
+      - 'backend/services/checkout-service/**'
+      - 'backend/services/order-service/**'
+      - 'backend/services/payment-service/**'
+      - 'backend/shared/**'
+      - 'backend/infrastructure/**'
+      - 'backend/e2e/**'
+      - 'docker-compose.yml'
+      - '.github/workflows/e2e.yml'
+
+jobs:
+  checkout-flow:
+    runs-on: ubuntu-latest
+    # The stack build dominates; the test itself is a couple of minutes.
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Write .env for the stack
+        run: |
+          set -euo pipefail
+          cp .env.example .env
+          # Generated per run and never committed. INTERNAL_IDENTITY_SECRET is
+          # mandatory — the gateway refuses to boot without one — and must be
+          # identical across every service that verifies it, which it is here
+          # because they all read the same .env.
+          #
+          # MTN_MOMO_WEBHOOK_HMAC_SECRET is mandatory for the same reason: the
+          # collection webhook now fails closed, so payment-service rejects an
+          # unsigned callback. The suite signs with the identical value, which
+          # is why it is exported into the test step below as well as written
+          # here for the container.
+          {
+            echo "INTERNAL_IDENTITY_SECRET=$(openssl rand -hex 32)"
+            echo "JWT_ACCESS_SECRET=$(openssl rand -hex 32)"
+            echo "JWT_REFRESH_SECRET=$(openssl rand -hex 32)"
+            echo "MTN_MOMO_WEBHOOK_HMAC_SECRET=$(openssl rand -hex 32)"
+          } >> .env
+
+      - name: Start the stack
+        run: docker compose --profile services up -d --build
+
+      # Compose's own healthchecks are the gate. Polling `docker compose ps`
+      # for them beats a fixed sleep, which is either flaky or wasteful.
+      - name: Wait for services to become healthy
+        run: |
+          set -euo pipefail
+          deadline=$(( $(date +%s) + 600 ))
+
+          while [ "$(date +%s)" -lt "$deadline" ]; do
+            unhealthy=$(docker compose --profile services ps \
+              --format '{{.Name}} {{.Health}}' \
+              | awk '$2 != "healthy" && $2 != "" { print $1 }' || true)
+
+            if [ -z "$unhealthy" ]; then
+              echo "All services healthy."
+              exit 0
+            fi
+
+            echo "Still waiting on: $unhealthy"
+            sleep 10
+          done
+
+          echo "::error::Services did not become healthy in time"
+          docker compose --profile services ps
+          exit 1
+
+      - name: Run the end-to-end checkout flow
+        # Sourced from the same .env the stack booted with, so the suite signs
+        # the MTN webhook with the exact secret payment-service verifies
+        # against. Reading it back beats generating a second value.
+        run: |
+          set -euo pipefail
+          export MTN_MOMO_WEBHOOK_HMAC_SECRET="$(grep -E '^MTN_MOMO_WEBHOOK_HMAC_SECRET=' .env | cut -d= -f2-)"
+          npm run test:e2e
+
+      # Logs are the only way to diagnose a failure after the stack is gone,
+      # and `if: failure()` puts them in the run rather than requiring a repro.
+      - name: Dump service logs on failure
+        if: failure()
+        run: |
+          docker compose --profile services ps
+          docker compose --profile services logs --tail=200 \
+            api-gateway auth-service product-service inventory-service \
+            cart-service checkout-service order-service payment-service
+
+      # `always()` so a failed test still tears the stack down and frees the
+      # runner's volumes; `-v` so the next run starts from a clean database.
+      - name: Tear down
+        if: always()
+        run: docker compose --profile services down -v --remove-orphans

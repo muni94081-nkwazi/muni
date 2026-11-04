@@ -1,0 +1,50 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "port": 3000
+    },
+    {
+      "name": "customer-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "frontend/customer-web",
+        "run",
+        "dev"
+      ],
+      "port": 5174,
+      "autoPort": true
+    },
+    {
+      "name": "admin-panel",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "frontend/admin-panel",
+        "run",
+        "dev"
+      ],
+      "port": 5176,
+      "autoPort": true
+    },
+    {
+      "name": "seller-center",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "frontend/seller-center",
+        "run",
+        "dev"
+      ],
+      "port": 5175,
+      "autoPort": true
+    }
+  ]
+}

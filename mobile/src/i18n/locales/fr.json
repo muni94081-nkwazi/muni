@@ -1,0 +1,25 @@
+{
+  "auth": {
+    "login": "Se connecter",
+    "register": "Créer un compte",
+    "email": "Adresse e-mail",
+    "password": "Mot de passe"
+  },
+  "product": {
+    "addToCart": "Ajouter au panier"
+  },
+  "cart": {
+    "title": "Mon panier",
+    "proceedToCheckout": "Passer à la caisse"
+  },
+  "checkout": {
+    "placeOrder": "Passer la commande"
+  },
+  "orders": {
+    "title": "Mes commandes"
+  },
+  "profile": {
+    "signOut": "Se déconnecter",
+    "language": "Langue"
+  }
+}

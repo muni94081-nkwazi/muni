@@ -1,0 +1,25 @@
+{
+  "auth": {
+    "login": "Shiga",
+    "register": "Ƙirƙiri Asusun",
+    "email": "Imel",
+    "password": "Kalmar sirri"
+  },
+  "product": {
+    "addToCart": "Ƙara zuwa Kwandon"
+  },
+  "cart": {
+    "title": "Kwandona",
+    "proceedToCheckout": "Ci gaba"
+  },
+  "checkout": {
+    "placeOrder": "Yi Oda"
+  },
+  "orders": {
+    "title": "Umarni na"
+  },
+  "profile": {
+    "signOut": "Fita",
+    "language": "Harshe"
+  }
+}

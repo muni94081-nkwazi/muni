@@ -1,0 +1,16 @@
+MUNI Platform {{ .Chart.Version }} deployed!
+
+API Gateway: https://{{ .Values.ingress.host }}
+
+Services deployed:
+{{- range $name, $svc := .Values.services }}
+{{- if $svc.enabled }}
+  - {{ $name }}:{{ $svc.service.port }}
+{{- end }}
+{{- end }}
+
+To check status:
+  kubectl get pods -n {{ .Release.Namespace }}
+
+To upgrade:
+  helm upgrade muni-platform ./helm/muni-platform -f values-production.yaml

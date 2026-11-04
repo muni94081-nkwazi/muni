@@ -1,0 +1,36 @@
+# Trivy scanner configuration for MUNI
+# Used in CI and local scanning
+
+severity:
+  - CRITICAL
+  - HIGH
+  - MEDIUM
+
+scan:
+  # Scan targets
+  security-checks:
+    - vuln
+    - config
+    - secret
+  
+  # Don't fail on unfixed vulnerabilities
+  ignore-unfixed: false
+  
+  # Exit code when vulnerabilities found
+  exit-code: 1
+
+vuln:
+  # Skip dev dependencies
+  skip-dirs:
+    - node_modules/.cache
+    - .git
+
+cache:
+  dir: /tmp/.trivy-cache
+  ttl: 24h
+
+format: table  # Use 'sarif' in CI for GitHub Security tab
+
+db:
+  # Auto-update vulnerability DB
+  no-progress: false

@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-service
+  namespace: muni
+  labels:
+    app: payment-service
+spec:
+  selector:
+    app: payment-service
+  ports:
+  - name: http
+    port: 4004
+    targetPort: 4004
+    protocol: TCP
+  type: ClusterIP

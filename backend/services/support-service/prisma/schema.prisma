@@ -1,0 +1,163 @@
+// Generate into this service rather than the hoisted node_modules/@prisma/client,
+// which every Prisma service in the monorepo would otherwise overwrite in turn —
+// leaving only the last service to run `prisma generate` with a usable client.
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Support ticketing ──────────────────────────────────────────────────────
+//
+// Distinct from dispute-service, which arbitrates a specific order between a
+// buyer and a seller with money at stake and a formal outcome. A support
+// ticket is a conversation with the platform: "where is my refund", "I can't
+// upload product photos", "my payout is late". Marketplaces generally keep the
+// two as separate systems for the same reason — one is adjudication, the other
+// is help.
+
+enum TicketStatus {
+  OPEN
+  /// An agent has picked it up.
+  IN_PROGRESS
+  /// Waiting on the requester; the SLA clock is paused while here.
+  AWAITING_CUSTOMER
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum RequesterRole {
+  CUSTOMER
+  SELLER
+}
+
+enum TicketCategory {
+  ORDER_ISSUE
+  DELIVERY_ISSUE
+  PAYMENT_ISSUE
+  REFUND_REQUEST
+  ACCOUNT_ACCESS
+  PRODUCT_LISTING
+  PAYOUT_ISSUE
+  TECHNICAL_PROBLEM
+  POLICY_QUESTION
+  OTHER
+}
+
+model Ticket {
+  id String @id @default(uuid())
+
+  /// Human-readable reference the requester quotes back, e.g. "MUNI-1042".
+  ticketNumber String @unique
+
+  requesterId   String
+  requesterRole RequesterRole @default(CUSTOMER)
+  /// Snapshotted so the queue lists a name without a user-service call per row.
+  requesterName String?
+
+  subject  String
+  category TicketCategory @default(OTHER)
+  priority TicketPriority @default(NORMAL)
+  status   TicketStatus   @default(OPEN)
+
+  /// Optional links to the thing being asked about.
+  orderId    String?
+  subOrderId String?
+  productId  String?
+  sellerId   String?
+
+  /// Agent currently responsible. Null while unassigned in the queue.
+  assigneeId   String?
+  assigneeName String?
+
+  // ── SLA tracking ──────────────────────────────────────────────────────────
+  // firstResponseDueAt is what "we replied within X hours" is measured
+  // against, and it is the number that actually predicts satisfaction —
+  // resolution time matters less than being answered at all.
+  firstResponseDueAt DateTime?
+  firstResponseAt    DateTime?
+  resolutionDueAt    DateTime?
+  resolvedAt         DateTime?
+  closedAt           DateTime?
+  /// Set when a due date passes unmet, so breaches are queryable, not derived.
+  slaBreached        Boolean   @default(false)
+
+  /// CSAT, 1-5, supplied by the requester after resolution.
+  satisfactionRating  Int?
+  satisfactionComment String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages TicketMessage[]
+  events   TicketEvent[]
+
+  @@index([requesterId, status, createdAt])
+  @@index([status, priority, createdAt])
+  @@index([assigneeId, status])
+  @@index([orderId])
+  @@map("tickets")
+}
+
+model TicketMessage {
+  id       String @id @default(uuid())
+  ticketId String
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  authorId   String
+  authorName String?
+  /// CUSTOMER, SELLER, AGENT or SYSTEM — SYSTEM covers automated status notes.
+  authorRole String
+
+  body String
+
+  /// Agent-only note. Never returned on a requester-facing read — the filter
+  /// lives in ticket.service.ts, not in the caller.
+  isInternal Boolean @default(false)
+
+  /// Attachment URLs (media-service). Kept as a list rather than a table
+  /// because nothing queries an attachment independently of its message.
+  attachments String[] @default([])
+
+  createdAt DateTime @default(now())
+
+  @@index([ticketId, createdAt])
+  @@map("ticket_messages")
+}
+
+// Append-only audit of what happened to a ticket, so "who reassigned this and
+// when" survives a later status change overwriting the fields.
+model TicketEvent {
+  id       String @id @default(uuid())
+  ticketId String
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  type    String
+  actorId String?
+  detail  Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([ticketId, createdAt])
+  @@map("ticket_events")
+}
+
+/// Monotonic source for ticketNumber. A dedicated row keeps numbering gap-free
+/// and readable, which a UUID or a count(*) would not be.
+model TicketCounter {
+  id    String @id @default("default")
+  value Int    @default(1000)
+
+  @@map("ticket_counters")
+}

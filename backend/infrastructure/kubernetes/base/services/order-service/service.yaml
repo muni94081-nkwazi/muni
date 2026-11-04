@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: order-service
+  namespace: muni
+  labels:
+    app: order-service
+spec:
+  selector:
+    app: order-service
+  ports:
+  - name: http
+    port: 4003
+    targetPort: 4003
+    protocol: TCP
+  type: ClusterIP

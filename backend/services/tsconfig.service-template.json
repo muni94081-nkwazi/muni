@@ -1,0 +1,20 @@
+{
+  "//": "Template for MUNI backend services. Copy to <service>/tsconfig.json as-is.",
+  "//module": "NodeNext matches the ESM services ('type': 'module' in package.json) and requires .js extensions on relative imports, which is the convention across backend/services.",
+  "//include": "Only the service's own sources. Files imported from ../../shared are still type-checked transitively via the import graph — do not add shared/**/* here or the service will compile unrelated modules.",
+  "//rootDir": "Deliberately unset. Services import from ../../shared and ../../infrastructure, which sit outside the service directory; any rootDir inside the service makes those imports fail with TS6059.",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "outDir": "./dist"
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pricing-service
+  namespace: muni-prod
+  labels:
+    app.kubernetes.io/name: pricing-service
+    app.kubernetes.io/part-of: muni-platform
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: pricing-service
+  template:
+    metadata:
+      labels:
+        app: pricing-service
+    spec:
+      containers:
+        - name: pricing-service
+          image: 123456789012.dkr.ecr.af-south-1.amazonaws.com/muni/pricing-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 4033
+              name: http
+          env:
+            - name: PORT
+              value: "4033"
+            - name: NODE_ENV
+              value: "production"
+            - name: KAFKA_BROKERS
+              value: "kafka-cluster-kafka-bootstrap.muni-prod.svc.cluster.local:9092"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 4033
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 4033
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pricing-service-svc
+  namespace: muni-prod
+  labels:
+    app: pricing-service
+spec:
+  type: ClusterIP
+  ports:
+    - port: 4033
+      targetPort: 4033
+      protocol: TCP
+      name: http
+  selector:
+    app: pricing-service

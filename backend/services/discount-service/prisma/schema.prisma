@@ -1,0 +1,128 @@
+// ─── discount-service Prisma schema ───────────────────────────────────────────
+//
+// Every discount, coupon, flash sale and BOGO promotion lived in two
+// process-local Maps: `discounts` and a nested `userUsage`. A restart erased
+// every code customers were holding, reset every usage counter to zero, and
+// forgot who had already redeemed what — so a one-per-customer code became
+// unlimited across a deploy, and two replicas each enforced their own private
+// half of a budget cap.
+//
+// Generated into src/generated/prisma rather than node_modules/@prisma/client,
+// matching every other service here — a shared client directory gets
+// overwritten by whichever service generated last.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Mirrors the DiscountType enum in src/models/discount.model.ts. The string
+/// values are part of the public API — `type: 'PERCENTAGE'` is what clients
+/// receive — so they are kept verbatim.
+enum DiscountType {
+  PERCENTAGE
+  FIXED_AMOUNT
+  FREE_SHIPPING
+  BOGO
+  FLASH_SALE
+}
+
+model Discount {
+  id String @id @default(uuid())
+
+  /// NOT globally unique. The service's rule is "unique among ACTIVE
+  /// discounts", so a retired code may be issued again — a partial unique
+  /// index in the migration enforces exactly that, since Prisma's schema
+  /// language cannot express a WHERE clause on an index.
+  code String
+
+  type DiscountType
+
+  /// Decimal, not Float. These feed an order total: `value` is either a
+  /// percentage or a fixed cash amount, and binary floating point accumulates
+  /// error across a basket. Converted back to `number` at the API boundary so
+  /// the JSON response shape is unchanged.
+  value          Decimal @db.Decimal(12, 2)
+  minOrderAmount Decimal @default(0) @map("min_order_amount") @db.Decimal(12, 2)
+
+  /// The budget cap and the counter that spends it. `usageCount` is only ever
+  /// moved by a conditional UPDATE guarded on `usage_count < max_usage_count`,
+  /// never by a read-then-write — see PrismaDiscountRepository.redeem.
+  maxUsageCount Int @map("max_usage_count")
+  usageCount    Int @default(0) @map("usage_count")
+  perUserLimit  Int @map("per_user_limit")
+
+  /// Scalar lists rather than join tables: these are only ever membership
+  /// tested in application code (`applicableProducts.includes(id)`), never
+  /// filtered or joined in SQL, so normalising them would add three tables and
+  /// buy nothing.
+  applicableCategories String[] @map("applicable_categories")
+  applicableProducts   String[] @map("applicable_products")
+  applicableSellers    String[] @map("applicable_sellers")
+
+  startsAt  DateTime @map("starts_at")
+  expiresAt DateTime @map("expires_at")
+  active    Boolean  @default(true)
+
+  createdBy String   @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  /// Stamped the first time this code is observed expired. The service used to
+  /// publish `discount.expired` on EVERY validation of an expired code, so a
+  /// popular dead coupon produced an unbounded stream of identical events.
+  /// A conditional update on this column makes it fire once.
+  expiredNotifiedAt DateTime? @map("expired_notified_at")
+
+  redemptions DiscountRedemption[]
+
+  /// Lookup by code is the hot path — every validate and apply starts here.
+  @@index([code])
+  /// getActive(): active AND started AND not expired.
+  @@index([active, startsAt, expiresAt])
+  /// getFlashSales(): narrowed by type first.
+  @@index([type, active])
+  /// getSellerPromotions(): a seller's own promotions.
+  @@index([createdBy])
+  @@map("discounts")
+}
+
+/// One row per successful redemption.
+///
+/// Replaces the nested `userUsage: Map<userId, Map<discountId, count>>`. Being
+/// rows rather than a counter means the per-user limit is a query rather than
+/// in-process bookkeeping, and — more usefully — it can carry a uniqueness
+/// constraint that makes a replayed redemption a no-op instead of a second
+/// decrement.
+model DiscountRedemption {
+  id         String   @id @default(uuid())
+  discountId String   @map("discount_id")
+  discount   Discount @relation(fields: [discountId], references: [id], onDelete: Cascade)
+
+  userId  String @map("user_id")
+  orderId String @map("order_id")
+
+  /// What this redemption was actually worth, so the ledger can be audited
+  /// without recomputing historical rules.
+  discountAmount Decimal  @map("discount_amount") @db.Decimal(12, 2)
+  redeemedAt     DateTime @default(now()) @map("redeemed_at")
+
+  /// The idempotency key. A retried apply carrying the same orderId collides
+  /// here and is answered from the existing row rather than incrementing
+  /// usage a second time.
+  ///
+  /// NOTE: applyCode still defaults a missing orderId to `order-<timestamp>`,
+  /// so retries WITHOUT an explicit orderId are not idempotent. That is a
+  /// caller-side gap tracked as a follow-up, not something this constraint can
+  /// close.
+  @@unique([discountId, userId, orderId], name: "one_redemption_per_order")
+  /// The per-user-limit count.
+  @@index([discountId, userId])
+  @@index([userId])
+  @@map("discount_redemptions")
+}

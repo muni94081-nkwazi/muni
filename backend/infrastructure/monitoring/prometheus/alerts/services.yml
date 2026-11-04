@@ -1,0 +1,135 @@
+groups:
+- name: muni.services
+  rules:
+  # Service down for 2+ minutes
+  - alert: ServiceDown
+    expr: up{job=~"api-gateway|auth-service|product-service|order-service|payment-service|checkout-service"} == 0
+    for: 2m
+    labels:
+      severity: critical
+      team: platform
+    annotations:
+      summary: "Critical service {{ $labels.job }} is DOWN"
+      description: "Service {{ $labels.job }} has been unreachable for 2+ minutes. Pod: {{ $labels.pod }}"
+      runbook: "https://runbooks.muni.ug/service-down"
+
+  # High error rate (5xx) > 5%
+  - alert: HighErrorRate
+    expr: |
+      sum(rate(http_requests_total{status=~"5.."}[5m])) by (job)
+      /
+      sum(rate(http_requests_total[5m])) by (job)
+      > 0.05
+    for: 3m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High 5xx error rate on {{ $labels.job }}: {{ $value | humanizePercentage }}"
+
+  # p95 latency > 2 seconds
+  - alert: HighLatencyP95
+    expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, job)) > 2
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High p95 latency on {{ $labels.job }}: {{ $value }}s"
+
+  # API Gateway high latency (stricter threshold)
+  - alert: GatewayHighLatency
+    expr: histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{job="api-gateway"}[5m])) by (le)) > 1
+    for: 3m
+    labels:
+      severity: critical
+    annotations:
+      summary: "API Gateway p99 latency exceeds 1s: {{ $value }}s"
+
+  # Memory usage > 80% of limit
+  - alert: HighMemoryUsage
+    expr: |
+      container_memory_working_set_bytes{namespace="muni", container!=""}
+      /
+      container_spec_memory_limit_bytes{namespace="muni", container!=""}
+      > 0.8
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High memory: {{ $labels.container }} at {{ $value | humanizePercentage }}"
+
+  # CPU throttling > 50%
+  - alert: HighCPUThrottling
+    expr: |
+      rate(container_cpu_cfs_throttled_seconds_total{namespace="muni"}[5m])
+      /
+      rate(container_cpu_cfs_periods_total{namespace="muni"}[5m])
+      > 0.5
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "CPU throttling > 50% on {{ $labels.container }}"
+
+  # Pod restart loop
+  - alert: PodCrashLooping
+    expr: increase(kube_pod_container_status_restarts_total{namespace="muni"}[15m]) > 3
+    for: 0m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Pod {{ $labels.pod }} is crash-looping ({{ $value }} restarts in 15m)"
+
+  # Checkout service specific: saga timeout
+  - alert: CheckoutSagaHighFailureRate
+    expr: |
+      sum(rate(checkout_saga_failures_total[5m]))
+      /
+      sum(rate(checkout_saga_started_total[5m]))
+      > 0.1
+    for: 3m
+    labels:
+      severity: critical
+      team: checkout
+    annotations:
+      summary: "Checkout saga failure rate > 10%: {{ $value | humanizePercentage }}"
+
+  - alert: FraudServiceHighBlockRate
+    expr: |
+      sum(rate(fraud_requests_blocked_total[5m]))
+      /
+      sum(rate(fraud_requests_total[5m]))
+      > 0.20
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Fraud Service blocking > 20% of requests"
+
+  - alert: PaymentServiceDown
+    expr: up{job="payment-service"} == 0
+    for: 2m
+    labels:
+      severity: critical
+      pagerduty: "true"
+    annotations:
+      summary: "Payment Service is DOWN"
+
+  - alert: AuthServiceHighErrorRate
+    expr: |
+      sum(rate(http_requests_total{job="auth-service", status=~"5.."}[5m]))
+      /
+      sum(rate(http_requests_total{job="auth-service"}[5m]))
+      > 0.01
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Auth Service error rate > 1%"
+
+  - alert: SearchServiceDown
+    expr: up{job="search-service"} == 0
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Search Service is DOWN"

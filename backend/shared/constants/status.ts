@@ -1,0 +1,2 @@
+export const ORDER_STATUS_LABELS: Record<string, string> = { pending: 'Pending', payment_processing: 'Processing payment', paid: 'Paid', confirmed: 'Confirmed', processing: 'Processing', shipped: 'Shipped', out_for_delivery: 'Out for delivery', delivered: 'Delivered', cancelled: 'Cancelled', payment_failed: 'Payment failed', refunded: 'Refunded' };
+export const PAYMENT_STATUS_LABELS: Record<string, string> = { pending: 'Pending', processing: 'Processing', completed: 'Paid', failed: 'Failed', refunded: 'Refunded', cancelled: 'Cancelled' };

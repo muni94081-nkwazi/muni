@@ -1,0 +1,62 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: muni
+
+resources:
+  # Namespace + shared config
+  - namespace.yaml
+  - configmap.yaml
+  - secret.yaml
+  # Network security
+  - network-policies.yaml
+
+  # ── Infrastructure StatefulSets ──────────────────────────────────────────
+  - infra/kafka.yaml
+  - infra/redis.yaml
+  - infra/datastores.yaml
+
+  # ── Ingress ──────────────────────────────────────────────────────────────
+  - ingress/ingress.yaml
+
+  # ── Init Jobs (Kafka topics, Prisma migrate, ES indices) ─────────────────
+  - jobs/init-jobs.yaml
+
+  # ── Autoscaling ──────────────────────────────────────────────────────────
+  - hpa.yaml
+  - pdb.yaml
+  - autoscaling/keda-scaledobjects.yaml
+
+  # ── Microservices ─────────────────────────────────────────────────────────
+  - services/api-gateway
+  - services/auth-service
+  - services/product-service
+  - services/order-service
+  - services/payment-service
+  - services/shipping-service
+  - services/notification-service
+  - services/analytics-service
+  - services/search-service
+  - services/inventory-service
+  - services/review-service
+  - services/currency-service
+  - services/tax-service
+  - services/discount-service
+  - services/wishlist-service
+  - services/cart-service
+  - services/media-service
+  - services/fraud-service
+  - services/return-service
+  - services/dispute-service
+  - services/marketplace-service
+  - services/fulfillment-service
+  - services/checkout-service
+  - services/chat-service
+
+commonLabels:
+  managed-by: kustomize
+  platform: muni
+
+commonAnnotations:
+  app.kubernetes.io/part-of: muni-platform
+  app.kubernetes.io/managed-by: kustomize

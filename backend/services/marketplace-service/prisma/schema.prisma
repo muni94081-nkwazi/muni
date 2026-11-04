@@ -1,0 +1,68 @@
+// ─── marketplace-service schema ───────────────────────────────────────────────
+//
+// Owns database `muni_marketplace`. Replaces the `stores[]` array in
+// services/marketplace.service.ts — a seller's storefront, its name, slug,
+// branding and verification status, all of which disappeared on restart.
+//
+// The three demo stores that array was seeded with are gone. Two of them
+// ("Tech Haven" in Seattle, "Fashion Forward" in New York) were placeholder
+// data for a Ugandan marketplace; writing them into a real database would put
+// fictional US storefronts in front of customers.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum StoreStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum VerificationStatus {
+  pending
+  verified
+  rejected
+}
+
+model Store {
+  id     String @id
+  userId String @map("user_id")
+
+  storeName String @map("store_name")
+  /// Derived from the name and used as the public storefront URL, so it has
+  /// to be unique — the array version happily allowed two identical slugs.
+  storeSlug String @unique @map("store_slug")
+
+  description String
+  logo        String?
+  banner      String?
+
+  categories String[]
+
+  /// { city, country } — a fixed two-field shape, but kept as JSON rather
+  /// than two columns to match the Zod model exactly.
+  location Json
+
+  rating         Float   @default(0)
+  reviewCount    Int     @default(0) @map("review_count")
+  totalSales     Int     @default(0) @map("total_sales")
+  commissionRate Float   @default(5) @map("commission_rate")
+
+  status             StoreStatus        @default(ACTIVE)
+  verificationStatus VerificationStatus @default(pending) @map("verification_status")
+
+  joinedAt  DateTime @map("joined_at")
+  updatedAt DateTime @map("updated_at")
+
+  /// getMyStore looks a seller up by their user id.
+  @@index([userId])
+  @@index([status])
+  @@map("stores")
+}

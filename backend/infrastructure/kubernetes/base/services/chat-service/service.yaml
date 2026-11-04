@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: chat-service
+  namespace: muni
+  labels:
+    app: chat-service
+spec:
+  selector:
+    app: chat-service
+  ports:
+  - name: http
+    port: 4025
+    targetPort: 4025
+    protocol: TCP
+  # Socket.io falls back to HTTP long-polling before it upgrades to a
+  # websocket, and the two legs of that handshake must reach the same pod.
+  # ClientIP affinity keeps them together; without it a polling handshake
+  # load-balanced across two replicas fails with "Session ID unknown".
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800
+  type: ClusterIP

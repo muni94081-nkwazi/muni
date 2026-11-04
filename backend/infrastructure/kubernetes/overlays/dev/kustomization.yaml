@@ -1,0 +1,21 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namePrefix: dev-
+namespace: muni-dev
+bases:
+- ../../base
+patches:
+- patch: |-
+    - op: replace
+      path: /spec/replicas
+      value: 1
+  target:
+    kind: Deployment
+    labelSelector: tier=backend
+configMapGenerator:
+- name: muni-config
+  behavior: merge
+  literals:
+  - NODE_ENV=development
+  - LOG_LEVEL=debug
+  - KAFKA_BROKERS=kafka.muni-dev.svc.cluster.local:9092

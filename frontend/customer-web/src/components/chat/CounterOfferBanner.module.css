@@ -1,0 +1,85 @@
+.banner {
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-width: 90%;
+  align-self: center;
+  background: var(--color-surface);
+}
+
+.banner.pending {
+  border-color: var(--color-warning);
+  background: #fff8ec;
+}
+
+.banner.accepted {
+  border-color: var(--color-success);
+  background: #eafaf3;
+}
+
+.banner.declined,
+.banner.expired {
+  border-color: var(--color-border);
+  background: var(--color-surface-alt);
+  opacity: 0.8;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+}
+
+.price {
+  font-size: var(--text-lg);
+  font-weight: 800;
+  color: var(--color-urgent);
+}
+
+.meta {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.statusLine {
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.statusLine.accepted { color: var(--color-success); }
+.statusLine.declined { color: var(--color-danger); }
+.statusLine.expired { color: var(--color-text-muted); }
+.statusLine.waiting { color: var(--color-text-muted); font-weight: 400; font-style: italic; }
+
+.actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.counterRow {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.counterInput {
+  flex: 1;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  font-size: var(--text-sm);
+  min-width: 0;
+}

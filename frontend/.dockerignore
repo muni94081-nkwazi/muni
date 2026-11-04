@@ -1,0 +1,11 @@
+# Host node_modules would clobber the layer `npm ci` just built (and are the
+# wrong platform's binaries). Always let the image install its own.
+**/node_modules
+**/dist
+**/dev-dist
+**/coverage
+**/.turbo
+**/*.log
+**/.git
+**/.env.local
+**/pnpm-lock.yaml

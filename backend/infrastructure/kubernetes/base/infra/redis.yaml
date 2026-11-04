@@ -1,0 +1,186 @@
+---
+# ── Redis StatefulSet (Sentinel HA) ──────────────────────────────────────────
+# Redis master + 2 replicas with 3 Sentinel instances for automatic failover.
+# Use Redis Sentinel (not Cluster) because most clients support it better.
+
+# ── Redis ConfigMap ───────────────────────────────────────────────────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-config
+  namespace: muni
+data:
+  redis.conf: |
+    bind 0.0.0.0
+    port 6379
+    save 900 1
+    save 300 10
+    save 60 10000
+    appendonly yes
+    appendfsync everysec
+    no-appendfsync-on-rewrite no
+    auto-aof-rewrite-percentage 100
+    auto-aof-rewrite-min-size 64mb
+    maxmemory 2gb
+    maxmemory-policy allkeys-lru
+    tcp-keepalive 300
+    timeout 0
+    loglevel notice
+    databases 16
+    replica-lazy-flush yes
+    lazyfree-lazy-eviction yes
+    lazyfree-lazy-expire yes
+    protected-mode no
+  sentinel.conf: |
+    bind 0.0.0.0
+    port 26379
+    sentinel monitor mymaster redis-0.redis-headless.muni.svc.cluster.local 6379 2
+    sentinel down-after-milliseconds mymaster 5000
+    sentinel failover-timeout mymaster 60000
+    sentinel parallel-syncs mymaster 1
+    protected-mode no
+---
+# ── Redis StatefulSet ─────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis
+  namespace: muni
+  labels:
+    app: redis
+    tier: infrastructure
+spec:
+  serviceName: redis-headless
+  replicas: 3
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+        tier: infrastructure
+    spec:
+      terminationGracePeriodSeconds: 30
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - redis
+            topologyKey: kubernetes.io/hostname
+      initContainers:
+      - name: init-redis
+        image: redis:7.2-alpine
+        command:
+        - sh
+        - -c
+        - |
+          cp /config/redis.conf /data/redis.conf
+          cp /config/sentinel.conf /data/sentinel.conf
+          if [ "$(hostname)" != "redis-0" ]; then
+            echo "replicaof redis-0.redis-headless.muni.svc.cluster.local 6379" >> /data/redis.conf
+          fi
+        volumeMounts:
+        - name: config
+          mountPath: /config
+        - name: redis-data
+          mountPath: /data
+      containers:
+      - name: redis
+        image: redis:7.2-alpine
+        command: ["redis-server", "/data/redis.conf"]
+        ports:
+        - name: redis
+          containerPort: 6379
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "512Mi"
+          limits:
+            cpu: "1000m"
+            memory: "2Gi"
+        readinessProbe:
+          exec:
+            command: ["redis-cli", "ping"]
+          initialDelaySeconds: 15
+          periodSeconds: 5
+        livenessProbe:
+          exec:
+            command: ["redis-cli", "ping"]
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        volumeMounts:
+        - name: redis-data
+          mountPath: /data
+        - name: config
+          mountPath: /config
+      - name: sentinel
+        image: redis:7.2-alpine
+        command: ["redis-sentinel", "/data/sentinel.conf"]
+        ports:
+        - name: sentinel
+          containerPort: 26379
+        resources:
+          requests:
+            cpu: "50m"
+            memory: "64Mi"
+          limits:
+            cpu: "200m"
+            memory: "256Mi"
+        readinessProbe:
+          exec:
+            command: ["redis-cli", "-p", "26379", "sentinel", "masters"]
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        volumeMounts:
+        - name: redis-data
+          mountPath: /data
+      volumes:
+      - name: config
+        configMap:
+          name: redis-config
+  volumeClaimTemplates:
+  - metadata:
+      name: redis-data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: gp3
+      resources:
+        requests:
+          storage: 20Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-headless
+  namespace: muni
+  labels:
+    app: redis
+spec:
+  clusterIP: None
+  selector:
+    app: redis
+  ports:
+  - name: redis
+    port: 6379
+  - name: sentinel
+    port: 26379
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: muni
+  labels:
+    app: redis
+spec:
+  selector:
+    app: redis
+  ports:
+  - name: redis
+    port: 6379
+    targetPort: 6379

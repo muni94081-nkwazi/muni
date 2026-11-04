@@ -1,0 +1,216 @@
+// ─── fulfillment-service schema ───────────────────────────────────────────────
+//
+// Owns database `muni_fulfillment`. Replaces four in-memory stores:
+// `fulfillments[]`, `codService.collections[]`, `codService.ledgers`, and
+// `riderService.riders` / `.signatures`.
+//
+// The cash ledger is the one that matters most. It is the record of how much
+// cash each rider took in on a given day and how much of it they handed back;
+// losing it on restart means nobody can tell whether a rider still owes the
+// platform money, and the variance that would have flagged a shortfall
+// silently resets to zero.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum FulfillmentType {
+  SELLER_FULFILLED
+  WAREHOUSE
+  THIRD_PARTY_LOGISTICS
+}
+
+enum FulfillmentStatus {
+  PENDING
+  ASSIGNED
+  PICKING
+  PACKED
+  HANDED_TO_CARRIER
+  PICKED_UP
+  IN_TRANSIT
+  DELIVERED_COD
+  RETURNED
+  DELIVERED
+  FAILED
+}
+
+enum FulfillmentPaymentMethod {
+  PREPAID
+  COD
+}
+
+enum CodVerificationStatus {
+  PENDING
+  VERIFIED
+  SHORT
+  DISPUTED
+}
+
+enum LedgerStatus {
+  OPEN
+  RECONCILED
+  FLAGGED
+}
+
+enum RiderStatus {
+  AVAILABLE
+  ON_DELIVERY
+  OFFLINE
+}
+
+enum VehicleType {
+  BODA
+  VAN
+  BICYCLE
+  FOOT
+}
+
+model Fulfillment {
+  id         String  @id
+  orderId    String  @map("order_id")
+  subOrderId String? @map("sub_order_id")
+  sellerId   String  @map("seller_id")
+
+  type              FulfillmentType
+  provider          String?
+  warehouseId       String? @map("warehouse_id")
+  warehouseLocation String? @map("warehouse_location")
+
+  status FulfillmentStatus
+
+  // Line items, the shipping address and the status timeline are only ever
+  // read as part of their fulfillment — never filtered or joined on — so they
+  // stay JSON rather than three more tables. shippingAddress was `z.any()`
+  // and has no fixed shape to model.
+  items           Json
+  shippingAddress Json @map("shipping_address")
+  timeline        Json
+
+  trackingNumber    String? @map("tracking_number")
+  estimatedDelivery String? @map("estimated_delivery")
+
+  // ── Cash on delivery ──────────────────────────────────────────────────
+  paymentMethod      FulfillmentPaymentMethod @default(PREPAID) @map("payment_method")
+  codAmountDue       Decimal?                 @map("cod_amount_due") @db.Decimal(14, 2)
+  codAmountCollected Decimal?                 @map("cod_amount_collected") @db.Decimal(14, 2)
+  codCurrency        String?                  @map("cod_currency")
+  codStatus          CodVerificationStatus?   @map("cod_status")
+
+  // ── Rider app ─────────────────────────────────────────────────────────
+  riderId String? @map("rider_id")
+
+  // Signatures were stored twice: once on the fulfillment and once in
+  // riderService.signatures. One table now, and the fulfillment's list is
+  // derived from this relation.
+  signatures  DigitalSignature[]
+  collections CodCollection[]
+
+  createdAt DateTime @map("created_at")
+  updatedAt DateTime @map("updated_at")
+
+  @@index([orderId])
+  @@index([sellerId, createdAt])
+  @@index([riderId, status])
+  // One delivery job per sub-order — see the migration for why this is a
+  // database constraint rather than an application check. Prisma models it as
+  // a plain unique; the migration writes it as a partial index so that several
+  // manually booked jobs with no sub-order do not collide.
+  @@unique([subOrderId], map: "Fulfillment_sub_order_id_key")
+  @@map("fulfillments")
+}
+
+model CodCollection {
+  id            String      @id
+  fulfillmentId String      @map("fulfillment_id")
+  fulfillment   Fulfillment @relation(fields: [fulfillmentId], references: [id], onDelete: Cascade)
+
+  orderId String @map("order_id")
+  riderId String @map("rider_id")
+
+  amountDue       Decimal @map("amount_due") @db.Decimal(14, 2)
+  amountCollected Decimal @map("amount_collected") @db.Decimal(14, 2)
+  currency        String
+  /// amountCollected - amountDue. Stored rather than computed so a later
+  /// change to the tolerance cannot retroactively rewrite history.
+  variance        Decimal @db.Decimal(14, 2)
+
+  verificationStatus CodVerificationStatus @map("verification_status")
+  notes              String?
+  collectedAt        DateTime              @map("collected_at")
+
+  @@index([riderId, collectedAt])
+  @@index([fulfillmentId])
+  @@map("cod_collections")
+}
+
+model CashLedgerEntry {
+  /// The Map was keyed by `riderId:date`, not by an id. Stored as a real
+  /// column with a unique index so the same rider-day can never produce two
+  /// ledger rows — the collision the Map made impossible.
+  ledgerKey String @id @map("ledger_key")
+
+  riderId String @map("rider_id")
+  /// YYYY-MM-DD in EAT (UTC+3, no DST), matching eatDateString().
+  date    String
+
+  totalDue       Decimal @map("total_due") @db.Decimal(14, 2)
+  totalCollected Decimal @map("total_collected") @db.Decimal(14, 2)
+  totalRemitted  Decimal @map("total_remitted") @db.Decimal(14, 2)
+  variance       Decimal @db.Decimal(14, 2)
+
+  /// Ids of the collections rolled into this day's totals.
+  collectionIds String[] @map("collection_ids")
+
+  status       LedgerStatus
+  reconciledAt DateTime?    @map("reconciled_at")
+  reconciledBy String?      @map("reconciled_by")
+
+  @@index([riderId, date])
+  // listPendingReconciliations filters on this.
+  @@index([status])
+  @@map("cash_ledger_entries")
+}
+
+model Rider {
+  id          String      @id
+  name        String?
+  phone       String?
+  vehicleType VehicleType @map("vehicle_type")
+  status      RiderStatus
+
+  /// Fulfillments this rider is currently carrying. A denormalised list, as
+  /// in the original — the authoritative assignment is Fulfillment.riderId.
+  activeFulfillmentIds String[] @map("active_fulfillment_ids")
+
+  createdAt DateTime @map("created_at")
+  updatedAt DateTime @map("updated_at")
+
+  @@index([status])
+  @@map("riders")
+}
+
+model DigitalSignature {
+  id            String      @id
+  fulfillmentId String      @map("fulfillment_id")
+  fulfillment   Fulfillment @relation(fields: [fulfillmentId], references: [id], onDelete: Cascade)
+
+  riderId       String @map("rider_id")
+  /// base64 image or SVG path data.
+  signatureData String @map("signature_data")
+  recipientName String @map("recipient_name")
+
+  /// Optional GPS fix at capture time, {lat, lng}.
+  location Json?
+
+  capturedAt DateTime @map("captured_at")
+
+  @@index([fulfillmentId])
+  @@index([riderId])
+  @@map("digital_signatures")
+}

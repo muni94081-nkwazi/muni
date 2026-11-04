@@ -1,0 +1,44 @@
+# Expo / React Native
+node_modules/
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native build folders
+android/
+ios/
+
+# Environment files
+.env
+.env.local
+.env.development
+.env.staging
+.env.production
+
+# EAS
+google-service-account.json
+*.p8
+*.p12
+*.mobileprovision
+
+# Logs
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+*.pem
+
+# TypeScript
+*.tsbuildinfo
+
+# Jest
+coverage/
+
+# Metro bundler
+.metro-health-check*
+
+# Expo Doctor
+.expo-doctor/

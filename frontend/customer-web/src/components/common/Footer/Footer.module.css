@@ -1,0 +1,871 @@
+/* Container & Theme Palette */
+.footerContainer {
+  background-color: #131921;
+  color: #dddddd;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  margin-top: 3rem;
+  width: 100%;
+}
+
+/* 1. Back to Top Band */
+.backToTop {
+  background: #37475a;
+  color: #ffffff;
+  border: none;
+  width: 100%;
+  padding: 0.9rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.2s ease;
+}
+
+.backToTop:hover {
+  background: #485769;
+}
+
+/* 2. Newsletter & mobile app download banner */
+.newsletterBanner {
+  background: linear-gradient(135deg, #1d2531 0%, #0f141c 100%);
+  border-bottom: 1px solid #2d3848;
+  padding: 2rem 1.5rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  max-width: 1300px;
+  margin: 0 auto;
+}
+
+@media (max-width: 900px) {
+  .newsletterBanner {
+    grid-template-columns: 1fr;
+  }
+}
+
+.newsletterText h3 {
+  color: #ffffff;
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0 0 0.5rem 0;
+}
+
+.newsletterText p {
+  color: #a0aec0;
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+.newsletterForm {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.emailInput {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border-radius: 4px;
+  border: 1px solid #4a5568;
+  background: #0f141c;
+  color: #ffffff;
+  font-size: 0.875rem;
+}
+
+.emailInput:focus {
+  outline: none;
+  border-color: #f68b1e;
+}
+
+.subscribeBtn {
+  background: #f68b1e;
+  color: #ffffff;
+  font-weight: 700;
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.subscribeBtn:hover {
+  background: #e07b10;
+}
+
+.toastSuccess {
+  background: #276749;
+  color: #ffffff;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+}
+
+.appDownloadSection {
+  border-left: 1px solid #2d3848;
+  padding-left: 2rem;
+}
+
+@media (max-width: 900px) {
+  .appDownloadSection {
+    border-left: none;
+    padding-left: 0;
+    border-top: 1px solid #2d3848;
+    padding-top: 1.5rem;
+  }
+}
+
+.appText h4 {
+  color: #ffffff;
+  font-size: 0.95rem;
+  margin: 0 0 0.25rem 0;
+}
+
+.appText p {
+  color: #a0aec0;
+  font-size: 0.8rem;
+  margin: 0 0 1rem 0;
+}
+
+.appBadges {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.appBadge, .qrBadgeBtn {
+  background: #2d3748;
+  color: #ffffff;
+  border: 1px solid #4a5568;
+  border-radius: 4px;
+  padding: 0.5rem 1rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.appBadge:hover, .qrBadgeBtn:hover {
+  background: #4a5568;
+  border-color: #cbd5e0;
+}
+
+/* 3. Trust & Guarantee Bar */
+.trustBar {
+  background: #232f3e;
+  border-bottom: 1px solid #3a4553;
+  padding: 1.25rem 1.5rem;
+}
+
+.trustInner {
+  max-width: 1300px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+}
+
+.trustItem {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.trustIcon {
+  font-size: 1.5rem;
+}
+
+.trustItem strong {
+  display: block;
+  color: #ffffff;
+  font-size: 0.85rem;
+}
+
+.trustItem small {
+  color: #a0aec0;
+  font-size: 0.75rem;
+}
+
+.trustPaymentPills {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.paymentPill {
+  background: #1a202c;
+  border: 1px solid #37475a;
+  color: #e2e8f0;
+  padding: 0.25rem 0.6rem;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+/* 4. Multi-Column Directory Grid */
+.mainFooter {
+  background: #232f3e;
+  padding: 2.5rem 1.5rem;
+  border-bottom: 1px solid #3a4553;
+}
+
+.columnsGrid {
+  max-width: 1300px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 2rem;
+}
+
+@media (max-width: 1024px) {
+  .columnsGrid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .columnsGrid {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+}
+
+.columnWrapper {
+  display: flex;
+  flex-direction: column;
+}
+
+.accordionHeader {
+  background: none;
+  border: none;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 0.95rem;
+  text-align: left;
+  padding: 0;
+  margin-bottom: 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.accordionChevron {
+  display: none;
+}
+
+/*
+ * Collapse mechanism.
+ *
+ * max-height, not display. The previous stylesheet flipped display:none/flex
+ * inside the media query, but an unconditional '.columnLinks { display: flex }'
+ * followed it at the same specificity and won on source order — so mobile
+ * columns never collapsed at all.
+ *
+ * Desktop is the default state below (no cap, fully visible). Only the mobile
+ * block caps it, so there is nothing for a later rule to override.
+ */
+.columnLinks {
+  overflow: hidden;
+}
+
+.linkList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+@media (max-width: 768px) {
+  .accordionHeader {
+    padding: 0.75rem 0;
+    border-bottom: 1px solid #37475a;
+    margin-bottom: 0;
+    cursor: pointer;
+  }
+  .accordionChevron {
+    display: inline-block;
+    font-size: 1.2rem;
+  }
+
+  .columnLinks {
+    max-height: 0;
+    /* visibility is what actually removes the links from the tab order and the
+       accessibility tree — max-height alone leaves a zero-height, overflow-
+       hidden box still holding focusable anchors. It is used instead of
+       display because, unlike display, it animates. */
+    visibility: hidden;
+    transition: max-height var(--duration-base, 180ms) var(--ease-standard, ease),
+                visibility var(--duration-base, 180ms);
+  }
+
+  .columnLinksOpen {
+    /* A generous cap rather than a measured height: the tallest column has six
+       links, so this clears it while keeping the transition bounded. */
+    max-height: 32rem;
+    visibility: visible;
+    padding: 0.75rem 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .columnLinks {
+    transition: none;
+  }
+}
+
+.linkItem {
+  color: #dddddd;
+  font-size: 0.825rem;
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: color 0.15s ease;
+}
+
+.linkItem:hover {
+  color: #ffffff;
+  text-decoration: underline;
+}
+
+.linkBadge {
+  background: #f68b1e;
+  color: #ffffff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0.1rem 0.4rem;
+  border-radius: 10px;
+  text-transform: uppercase;
+}
+
+/* 5. Region & Logo Bar */
+.logoBar {
+  max-width: 1300px;
+  margin: 2rem auto 0 auto;
+  padding-top: 1.5rem;
+  border-top: 1px solid #37475a;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.footerLogo {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #ffffff;
+  text-decoration: none;
+}
+
+.logoDot {
+  color: #f68b1e;
+}
+
+.regionSelectorPill {
+  border: 1px solid #848688;
+  border-radius: 4px;
+  padding: 0.4rem 0.8rem;
+  display: flex;
+  gap: 0.75rem;
+  font-size: 0.8rem;
+  color: #cccccc;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+
+.regionSelectorPill:hover {
+  border-color: #ffffff;
+  color: #ffffff;
+}
+
+.changeBtn {
+  color: #f68b1e;
+  font-weight: 700;
+}
+
+/* 6. Ecosystem grid */
+.ecosystemSection {
+  background: #131921;
+  padding: 2rem 1.5rem;
+  border-bottom: 1px solid #232f3e;
+}
+
+.ecosystemGrid {
+  max-width: 1300px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.25rem;
+}
+
+@media (max-width: 768px) {
+  .ecosystemGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.brandCard {
+  text-decoration: none;
+  padding: 0.5rem;
+  border-radius: 4px;
+  transition: background 0.15s ease;
+}
+
+.brandCard:hover {
+  background: #1f2837;
+}
+
+.brandName {
+  color: #dddddd;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.brandDesc {
+  color: #888888;
+  font-size: 0.725rem;
+  margin-top: 0.15rem;
+}
+
+/* 7. Bottom Legal Bar */
+.bottomBar {
+  background: #131921;
+  padding: 1.5rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.socialLinks {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+}
+
+.socialIcon {
+  color: #a0aec0;
+  text-decoration: none;
+}
+
+.socialIcon:hover {
+  color: #ffffff;
+}
+
+.socialIconWhatsApp {
+  color: #25d366;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.legalLinks {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  font-size: 0.75rem;
+}
+
+.legalLinks a {
+  color: #a0aec0;
+  text-decoration: none;
+}
+
+.legalLinks a:hover {
+  color: #ffffff;
+  text-decoration: underline;
+}
+
+.copyrightText {
+  color: #718096;
+  font-size: 0.725rem;
+  line-height: 1.4;
+}
+
+/* Modal Dialog Styles */
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 1rem;
+}
+
+.modalContent {
+  background: #1a202c;
+  color: #ffffff;
+  border-radius: 8px;
+  width: 100%;
+  max-width: 550px;
+  border: 1px solid #37475a;
+  overflow: hidden;
+}
+
+.modalHeader {
+  padding: 1rem 1.25rem;
+  background: #2d3748;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modalHeader h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.closeBtn {
+  background: none;
+  border: none;
+  color: #ffffff;
+  font-size: 1.5rem;
+  cursor: pointer;
+}
+
+.modalBody {
+  padding: 1.25rem;
+}
+
+.formGroup {
+  margin-bottom: 1.25rem;
+}
+
+.formGroup label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: #cbd5e0;
+}
+
+.countryGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem;
+}
+
+.countryOption {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: #2d3748;
+  border: 1px solid #4a5568;
+  color: #ffffff;
+  padding: 0.6rem;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.activeOption {
+  border-color: #f68b1e !important;
+  background: #374151 !important;
+}
+
+.langList {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.langBtn {
+  background: #2d3748;
+  border: 1px solid #4a5568;
+  color: #ffffff;
+  padding: 0.4rem 0.8rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.modalFooter {
+  padding: 1rem 1.25rem;
+  background: #2d3748;
+  text-align: right;
+}
+
+.saveBtn {
+  background: #f68b1e;
+  color: #ffffff;
+  font-weight: 700;
+  border: none;
+  padding: 0.6rem 1.25rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.qrBox {
+  background: #ffffff;
+  color: #000000;
+  padding: 3rem;
+  font-weight: 800;
+  border-radius: 8px;
+  display: inline-block;
+}
+
+/* ── Added with the functional footer ──────────────────────────────────────── */
+
+/* Heading wrapper around the column title / accordion toggle. The h3 carries no
+   visual weight of its own — .accordionHeader and .columnTitle style it — so it
+   is reset here rather than inheriting the global h3 rules. */
+.columnHeading {
+  margin: 0 0 1rem 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.columnTitle {
+  display: block;
+}
+
+@media (max-width: 768px) {
+  .columnHeading {
+    margin: 0;
+  }
+}
+
+/* Newsletter consent line — smaller and dimmer than the pitch above it, but
+   still above the 4.5:1 contrast floor on this surface. */
+.newsletterConsent {
+  color: #c9d1d9;
+  font-size: 0.75rem;
+  margin: 0.75rem 0 0 0;
+}
+
+.newsletterConsentLink {
+  color: #ffffff;
+  text-decoration: underline;
+}
+
+/* Error counterpart to .toastSuccess. A failed subscription must look
+   different from a successful one — the old form only ever showed success. */
+.toastError {
+  background: #7f1d1d;
+  color: #ffffff;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+}
+
+.appList {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.qrBox {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  background: #ffffff;
+  padding: 0.5rem;
+  border-radius: 6px;
+  width: fit-content;
+  margin-top: 0.75rem;
+}
+
+.qrCaption {
+  color: #1a202c;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.socialLabel {
+  color: #c9d1d9;
+}
+
+.socialList,
+.legalList,
+.paymentList,
+.trustList,
+.categoryList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.paymentList {
+  gap: 0.5rem;
+}
+
+.trustList {
+  gap: 1.5rem;
+  align-items: center;
+}
+
+.legalList {
+  justify-content: center;
+  gap: 1rem;
+}
+
+.trustLink {
+  text-decoration: none;
+  display: block;
+}
+
+.trustLink strong {
+  display: block;
+  color: #ffffff;
+  font-size: 0.85rem;
+}
+
+.trustLink small {
+  color: #c9d1d9;
+  font-size: 0.75rem;
+}
+
+.trustLink:hover strong {
+  text-decoration: underline;
+}
+
+/* ── Shop-by-category strip ────────────────────────────────────────────────── */
+
+.categoryStrip {
+  max-width: 1300px;
+  margin: 2rem auto 0 auto;
+  padding-top: 1.5rem;
+  border-top: 1px solid #37475a;
+}
+
+.categoryHeading {
+  color: #ffffff;
+  font-size: 0.9rem;
+  font-weight: 700;
+  margin: 0 0 0.75rem 0;
+}
+
+.categoryList {
+  gap: 0.5rem 1.25rem;
+}
+
+.categoryLink {
+  color: #c9d1d9;
+  font-size: 0.8rem;
+  text-decoration: none;
+}
+
+.categoryLink:hover {
+  color: #ffffff;
+  text-decoration: underline;
+}
+
+/* ── Market selector ───────────────────────────────────────────────────────── */
+
+/* Now a real <button>; the element it replaces was a <div onClick> that no
+   keyboard user could reach. */
+.regionSelectorPill {
+  background: none;
+  font: inherit;
+  border: 1px solid #848688;
+  border-radius: 4px;
+  padding: 0.4rem 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.8rem;
+  color: #cccccc;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+
+.regionSelectorPill:hover {
+  border-color: #ffffff;
+  color: #ffffff;
+}
+
+.regionCurrency {
+  font-weight: 700;
+  color: #ffffff;
+}
+
+/* ── Market / auth modal internals (rendered inside the shared Modal) ──────── */
+
+.modalIntro {
+  color: var(--color-text-primary);
+  margin-bottom: var(--space-4);
+  line-height: 1.5;
+}
+
+.modalNote {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  margin-top: var(--space-4);
+  line-height: 1.5;
+}
+
+.modalActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}
+
+.countryGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+@media (max-width: 480px) {
+  .countryGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.countryOption {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.countryOption:hover {
+  background: var(--color-surface-muted);
+}
+
+.activeOption {
+  border-color: var(--color-primary);
+  box-shadow: inset 0 0 0 1px var(--color-primary);
+}
+
+.countryFlag {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.countryCurrency {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}

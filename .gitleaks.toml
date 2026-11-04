@@ -1,0 +1,58 @@
+title = "MUNI Gitleaks Config"
+
+[extend]
+# Extend the built-in gitleaks config
+useDefault = true
+
+[[rules]]
+description = "AWS Access Key"
+id = "aws-access-key"
+regex = '''AKIA[0-9A-Z]{16}'''
+tags = ["aws", "key"]
+
+[[rules]]
+description = "AWS Secret Key"
+id = "aws-secret-key"
+regex = '''(?i)aws_secret_access_key\s*=\s*['"]?[A-Za-z0-9+/]{40}['"]?'''
+tags = ["aws", "secret"]
+
+[[rules]]
+description = "JWT Secret"
+id = "jwt-secret"
+regex = '''(?i)(jwt_secret|jwt_refresh_secret)\s*[=:]\s*['"]?[A-Za-z0-9+/._-]{32,}['"]?'''
+tags = ["jwt"]
+
+[[rules]]
+description = "Stripe Secret Key"
+id = "stripe-secret"
+regex = '''sk_(?:live|test)_[A-Za-z0-9]{24,}'''
+tags = ["stripe", "payment"]
+
+[[rules]]
+description = "SendGrid API Key"
+id = "sendgrid-key"
+regex = '''SG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}'''
+tags = ["sendgrid", "email"]
+
+[[rules]]
+description = "Generic API Key in env file"
+id = "generic-api-key"
+regex = '''(?i)api_key\s*=\s*['"]?[A-Za-z0-9]{32,}['"]?'''
+tags = ["api"]
+
+[allowlist]
+description = "MUNI allowlist"
+paths = [
+  '''.env.example''',
+  '''tests/.*''',
+  '''__tests__/.*''',
+  '''.*\.test\.ts''',
+  '''.*\.spec\.ts''',
+]
+# Allow placeholder values in tests and examples
+regexes = [
+  '''placeholder''',
+  '''test-jwt-secret''',
+  '''your-.*-here''',
+  '''REPLACE_ME''',
+]

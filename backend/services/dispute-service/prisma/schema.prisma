@@ -1,0 +1,117 @@
+// ─── dispute-service schema ───────────────────────────────────────────────────
+//
+// Owns database `muni_dispute`. Replaces the module-level `disputesStore` Map
+// in services/dispute.service.ts, which lost every open claim on restart and
+// gave each replica its own private view of who was owed a refund.
+//
+// Money columns are Decimal(14,2) to match payment-service rather than Int:
+// UGX is used without minor units in practice, but a claim amount is compared
+// against — and turns into — a refund, and those cross a service boundary into
+// code that does use decimals. The repository converts to `number` at the edge
+// so the domain type is unchanged.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ClaimType {
+  NON_DELIVERY
+  DEFECTIVE_ITEM
+}
+
+enum DisputeStatus {
+  OPENED
+  SELLER_RESPONDED
+  UNDER_MEDIATION
+  ARBITRATION
+  RESOLVED_BUYER_FAVOR
+  RESOLVED_SELLER_FAVOR
+  CLOSED
+}
+
+enum ResolutionAction {
+  ACCEPT_RETURN
+  REFUND_FULL
+  REFUND_PARTIAL
+}
+
+enum SlaStatus {
+  PENDING
+  BREACHED
+  MET
+}
+
+// Lower-case on purpose: these are the exact string literals the domain type
+// `DisputeMessage['senderRole']` uses, so the repository needs no mapping.
+enum DisputeSenderRole {
+  buyer
+  seller
+  admin
+}
+
+model Dispute {
+  id            String  @id
+  disputeNumber String  @unique @map("dispute_number")
+  orderId       String  @map("order_id")
+  subOrderId    String? @map("sub_order_id")
+  buyerId       String  @map("buyer_id")
+  sellerId      String  @map("seller_id")
+
+  claimType   ClaimType @map("claim_type")
+  description String
+
+  // Append-only, and only ever read as part of its dispute — never filtered or
+  // joined on — so it stays a JSON array rather than a fourth table. Same call
+  // as payment-service's `card` / `rawPayload` columns.
+  evidence Json @default("[]")
+
+  claimAmountUGX Decimal @map("claim_amount_ugx") @db.Decimal(14, 2)
+
+  status           DisputeStatus
+  resolutionAction ResolutionAction? @map("resolution_action")
+  refundAmountUGX  Decimal?          @map("refund_amount_ugx") @db.Decimal(14, 2)
+  resolutionNote   String?           @map("resolution_note")
+
+  /// 72h window the seller has to resolve before the sweep auto-escalates.
+  resolutionDeadline DateTime  @map("resolution_deadline")
+  slaStatus          SlaStatus @default(PENDING) @map("sla_status")
+  autoEscalated      Boolean   @default(false) @map("auto_escalated")
+
+  messages DisputeMessage[]
+
+  adminId     String?   @map("admin_id")
+  escalatedAt DateTime? @map("escalated_at")
+  resolvedAt  DateTime? @map("resolved_at")
+  createdAt   DateTime  @map("created_at")
+  updatedAt   DateTime  @map("updated_at")
+
+  @@index([buyerId])
+  @@index([sellerId])
+  @@index([orderId])
+  // The SLA sweep's exact predicate: still-breachable statuses, ordered by the
+  // deadline it compares against. Without it every sweep is a full scan.
+  @@index([status, resolutionDeadline])
+  @@map("disputes")
+}
+
+model DisputeMessage {
+  id         String            @id
+  disputeId  String            @map("dispute_id")
+  dispute    Dispute           @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+  senderId   String            @map("sender_id")
+  senderRole DisputeSenderRole @map("sender_role")
+  content    String
+
+  attachments String[] @default([])
+  sentAt      DateTime @map("sent_at")
+
+  // Messages are always fetched for one dispute in chronological order.
+  @@index([disputeId, sentAt])
+  @@map("dispute_messages")
+}

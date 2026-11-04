@@ -1,0 +1,25 @@
+{
+  "auth": {
+    "login": "تسجيل الدخول",
+    "register": "إنشاء حساب",
+    "email": "البريد الإلكتروني",
+    "password": "كلمة المرور"
+  },
+  "product": {
+    "addToCart": "أضف إلى السلة"
+  },
+  "cart": {
+    "title": "سلتي",
+    "proceedToCheckout": "تابع للدفع"
+  },
+  "checkout": {
+    "placeOrder": "تأكيد الطلب"
+  },
+  "orders": {
+    "title": "طلباتي"
+  },
+  "profile": {
+    "signOut": "تسجيل الخروج",
+    "language": "اللغة"
+  }
+}

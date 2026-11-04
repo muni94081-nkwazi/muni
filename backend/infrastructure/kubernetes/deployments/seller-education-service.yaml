@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: seller-education-service
+  namespace: muni-prod
+  labels:
+    app.kubernetes.io/name: seller-education-service
+    app.kubernetes.io/part-of: muni-platform
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: seller-education-service
+  template:
+    metadata:
+      labels:
+        app: seller-education-service
+    spec:
+      containers:
+        - name: seller-education-service
+          image: 123456789012.dkr.ecr.af-south-1.amazonaws.com/muni/seller-education-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 4028
+              name: http
+          env:
+            - name: PORT
+              value: "4028"
+            - name: NODE_ENV
+              value: "production"
+            - name: KAFKA_BROKERS
+              value: "kafka-cluster-kafka-bootstrap.muni-prod.svc.cluster.local:9092"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 4028
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 4028
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: seller-education-service-svc
+  namespace: muni-prod
+  labels:
+    app: seller-education-service
+spec:
+  type: ClusterIP
+  ports:
+    - port: 4028
+      targetPort: 4028
+      protocol: TCP
+      name: http
+  selector:
+    app: seller-education-service

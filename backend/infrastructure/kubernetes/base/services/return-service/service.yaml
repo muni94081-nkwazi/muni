@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: return-service
+  namespace: muni
+  labels:
+    app: return-service
+spec:
+  selector:
+    app: return-service
+  ports:
+  - name: http
+    port: 4020
+    targetPort: 4020
+    protocol: TCP
+  type: ClusterIP

@@ -1,0 +1,81 @@
+// ─── advertising-service schema ───────────────────────────────────────────────
+//
+// Owns database `muni_advertising`. Replaces campaignsStore and clicksStore.
+//
+// This is seller money: every click charges the campaign's bid against a daily
+// budget. The Map meant a restart reset totalSpentUGX to whatever the seed
+// said, so budgets that had been exhausted started spending again and the
+// click log backing the charges was gone.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum CampaignStatus {
+  ACTIVE
+  PAUSED
+  EXPIRED
+  BUDGET_EXHAUSTED
+}
+
+model Campaign {
+  id       String @id
+  sellerId String @map("seller_id")
+
+  productId   String @map("product_id")
+  productName String @map("product_name")
+
+  campaignName String @map("campaign_name")
+
+  dailyBudgetUGX Decimal @map("daily_budget_ugx") @db.Decimal(14, 2)
+  bidPerClickUGX Decimal @map("bid_per_click_ugx") @db.Decimal(14, 2)
+
+  /// Lower-cased and trimmed on write, so matching is a plain comparison.
+  keywords String[]
+
+  status CampaignStatus
+
+  totalImpressions Int     @default(0) @map("total_impressions")
+  totalClicks      Int     @default(0) @map("total_clicks")
+  totalSpentUGX    Decimal @default(0) @map("total_spent_ugx") @db.Decimal(14, 2)
+
+  clicks AdClick[]
+
+  startDate String  @map("start_date")
+  endDate   String? @map("end_date")
+
+  createdAt DateTime @map("created_at")
+  updatedAt DateTime @map("updated_at")
+
+  @@index([sellerId])
+  // getSponsoredProducts scans campaigns that are live and still in budget.
+  @@index([status])
+  @@map("campaigns")
+}
+
+model AdClick {
+  id         String   @id
+  campaignId String   @map("campaign_id")
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  productId String @map("product_id")
+  sellerId  String @map("seller_id")
+
+  /// What the seller was actually charged for this click — the campaign's bid
+  /// at the moment it happened, stored so a later bid change cannot rewrite
+  /// what was already billed.
+  chargedAmountUGX Decimal @map("charged_amount_ugx") @db.Decimal(14, 2)
+
+  userIp    String?  @map("user_ip")
+  clickedAt DateTime @map("clicked_at")
+
+  @@index([campaignId, clickedAt])
+  @@index([sellerId])
+  @@map("ad_clicks")
+}

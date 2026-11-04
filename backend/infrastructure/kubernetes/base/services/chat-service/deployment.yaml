@@ -1,0 +1,96 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chat-service
+  namespace: muni
+  labels:
+    app: chat-service
+    tier: backend
+    version: v1
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: chat-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: chat-service
+        tier: backend
+        version: v1
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+      - name: chat-service
+        image: 123456789012.dkr.ecr.af-south-1.amazonaws.com/muni/chat-service:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 4025
+          name: http
+        envFrom:
+        - configMapRef:
+            name: muni-config
+        - secretRef:
+            name: muni-secrets
+        env:
+        - name: PORT
+          value: "4025"
+        # chat-service is the one service a browser opens a socket against
+        # directly — the websocket does not pass through the api-gateway, so
+        # there is no signed identity assertion on the handshake. It verifies
+        # the user's own access token instead, which means it needs the same
+        # signing secret auth-service and the gateway use. Supplied by the
+        # muni-secrets envFrom above as JWT_ACCESS_SECRET; without it every
+        # socket connection is refused.
+        #
+        # Socket.io CORS allowlist. The code defaults to localhost origins,
+        # which are wrong for a cluster, so the public origin is named here.
+        - name: CORS_ORIGINS
+          value: "https://muni.ug,https://www.muni.ug"
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "192Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: 4025
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 4025
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        lifecycle:
+          preStop:
+            exec:
+              # Socket.io connections are long-lived: this gives in-flight
+              # frames a moment to drain before the container goes away, so a
+              # rolling update does not cut active conversations mid-message.
+              command: ["/bin/sh", "-c", "sleep 5"]
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - chat-service
+              topologyKey: kubernetes.io/hostname

@@ -1,0 +1,234 @@
+// ─── shipping-service Prisma schema ───────────────────────────────────────────
+//
+// Everything this service knew used to live in process memory: `shipments` in
+// app.ts, and `stations` / `holdsByStation` / `stationSeqByRegion` inside
+// PickupStationService. A restart erased every shipment, tracking event and
+// package hold on the platform, and two replicas each held their own private
+// copy of the truth.
+//
+// Generated into src/generated/prisma rather than node_modules/@prisma/client,
+// matching every other service here — a shared client directory gets
+// overwritten by whichever service generated last.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Mirrors src/models/region.ts. Kept as an enum so a typo cannot create a
+// fifth coverage zone that the tariff engine has no rates for.
+enum Region {
+  KAMPALA
+  ENTEBBE
+  JINJA
+  UPCOUNTRY
+}
+
+enum PickupStationStatus {
+  ACTIVE
+  INACTIVE
+  FULL
+}
+
+enum PackageHoldStatus {
+  AWAITING_PICKUP
+  COLLECTED
+}
+
+/// Lowercase to match the strings the existing API already returns — these
+/// values are part of the public contract (`status: 'in_transit'`).
+enum ShipmentStatus {
+  order_placed
+  picked_up
+  in_transit
+  out_for_delivery
+  delivered
+  failed
+  returned
+}
+
+// ─── Shipments ────────────────────────────────────────────────────────────────
+
+/// One parcel movement.
+///
+/// The in-memory Map was written twice per shipment — once keyed by
+/// `trackingNumber`, once by `shipmentId` — so both lookups hit the same
+/// object. Here that is one row with two unique columns, which also stops the
+/// two ids from ever drifting apart.
+model Shipment {
+  id             String @id @default(uuid())
+  /// Public shipment id (`shp_xxxxxxxx`). Distinct from the primary key so the
+  /// external identifier can change format without a data migration.
+  shipmentId     String @unique @map("shipment_id")
+  /// Carrier-facing tracking number (`TRK-XXXXXX`).
+  trackingNumber String @unique @map("tracking_number")
+
+  orderId    String  @map("order_id")
+  subOrderId String? @map("sub_order_id")
+
+  fromLocation String @map("from_location")
+  toLocation   String @map("to_location")
+
+  /// Decimal, not Float: parcel weight feeds billing, and float error
+  /// accumulates across a consignment.
+  weightKg Decimal @map("weight_kg") @db.Decimal(10, 3)
+
+  /// express | standard | economy | pickup — the API's `type` field.
+  serviceLevel String  @map("service_level")
+  carrier      String?
+
+  status   ShipmentStatus @default(in_transit)
+  labelUrl String?        @map("label_url")
+
+  events ShipmentEvent[]
+  proof  DeliveryProof?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  /// "every shipment for this order" — the order-detail read path.
+  @@index([orderId])
+  /// Ops dashboards filter by state and sort by age.
+  @@index([status, createdAt])
+  @@map("shipments")
+}
+
+/// A point in a shipment's history.
+///
+/// Consolidates the two competing event shapes the service carried: the
+/// `events[]` array inside the in-memory shipment (status/description/location
+/// as free text) and the richer `TrackingEvent` from the unmounted
+/// tracking.service (carrier plus lat/lng). The free-text fields stay
+/// required so the existing response shape is unchanged; the geo fields are
+/// optional additions.
+model ShipmentEvent {
+  id         String   @id @default(uuid())
+  shipmentId String   @map("shipment_id")
+  shipment   Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  status      ShipmentStatus
+  description String
+  location    String
+
+  lat     Float?
+  lng     Float?
+  carrier String?
+
+  occurredAt DateTime @default(now()) @map("occurred_at")
+
+  /// The only read path is "this shipment's events, oldest first".
+  @@index([shipmentId, occurredAt])
+  @@map("shipment_events")
+}
+
+/// Photo + signature captured at the door.
+///
+/// One per shipment, enforced by the unique constraint rather than by
+/// convention — the previous Map was keyed by orderId and silently overwrote
+/// an earlier proof.
+model DeliveryProof {
+  id         String   @id @default(uuid())
+  shipmentId String   @unique @map("shipment_id")
+  shipment   Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  orderId       String  @map("order_id")
+  imageUrl      String? @map("image_url")
+  signatureUrl  String? @map("signature_url")
+  recipientName String  @map("recipient_name")
+
+  capturedAt DateTime @default(now()) @map("captured_at")
+
+  @@index([orderId])
+  @@map("delivery_proofs")
+}
+
+// ─── Pickup stations (PUDO) ───────────────────────────────────────────────────
+
+model PickupStation {
+  id   String @id @default(uuid())
+  /// Region-prefixed human code, e.g. PUDO-KLA-001. Allocated from
+  /// StationCodeSequence below.
+  code String @unique
+
+  name    String
+  region  Region
+  address String
+  lat     Float?
+  lng     Float?
+
+  contactPhone String @map("contact_phone")
+
+  /// WeeklyOperatingHours — a sparse Partial<Record<DayOfWeek, {open, close}>>.
+  /// Read and written whole, never queried by day, so normalising it into
+  /// seven rows would buy nothing.
+  operatingHours Json @map("operating_hours")
+
+  capacity    Int
+  currentLoad Int                 @default(0) @map("current_load")
+  status      PickupStationStatus @default(ACTIVE)
+
+  holds PackageHold[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  /// "open stations in my region" — the customer-facing lookup.
+  @@index([region, status])
+  @@map("pickup_stations")
+}
+
+model PackageHold {
+  id        String        @id @default(uuid())
+  stationId String        @map("station_id")
+  /// Restrict, not Cascade: a station still holding packages must not be
+  /// deletable out from under them.
+  station   PickupStation @relation(fields: [stationId], references: [id], onDelete: Restrict)
+
+  trackingNumber String @map("tracking_number")
+  orderId        String @map("order_id")
+
+  recipientName  String  @map("recipient_name")
+  recipientPhone String  @map("recipient_phone")
+  shelfCode      String? @map("shelf_code")
+
+  status PackageHoldStatus @default(AWAITING_PICKUP)
+
+  /// bcrypt hash of the 6-digit collection code, never the code itself. It is
+  /// the only thing between a package and whoever walks up to the counter, so
+  /// a database leak must not hand over every parcel in the network. The
+  /// plaintext is returned once, in the check-in response, exactly as before.
+  pickupCodeHash String @map("pickup_code_hash")
+
+  checkedInAt DateTime @default(now()) @map("checked_in_at")
+  checkedInBy String   @map("checked_in_by")
+
+  checkedOutAt DateTime? @map("checked_out_at")
+  checkedOutBy String?   @map("checked_out_by")
+
+  /// checkOutPackage looks up "the awaiting hold for this tracking number at
+  /// this station". This makes that uniqueness a constraint instead of an
+  /// assumption — two concurrent check-ins of the same parcel now fail loudly.
+  /// Collected rows are excluded via the partial index in the migration, so a
+  /// parcel can legitimately be re-lodged after collection.
+  @@index([stationId, status])
+  @@index([orderId])
+  @@index([trackingNumber])
+  @@map("package_holds")
+}
+
+/// Per-region counter behind the PUDO-KLA-001 codes.
+///
+/// Replaces `stationSeqByRegion`, an in-process Map: two replicas each started
+/// at zero and both minted PUDO-KLA-001. Incremented in the same transaction
+/// as the station insert.
+model StationCodeSequence {
+  region Region @id
+  seq    Int    @default(0)
+
+  @@map("station_code_sequences")
+}

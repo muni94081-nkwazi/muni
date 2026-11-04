@@ -1,0 +1,22 @@
+// Build configuration — what actually ships in the container image.
+//
+// Differs from tsconfig.json (the editor/typecheck config) in two ways:
+//   1. `rootDir` is pinned to backend/ so the emitted tree is identical for
+//      every service, whether or not it imports from backend/shared/. Without
+//      it TypeScript infers the common source root, which shifts the output
+//      path depending on which files a service happens to import.
+//   2. Tests are excluded — they pull in @jest/globals and fixture types that
+//      have no business in a production image.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "../../",
+    "outDir": "dist",
+    "noEmit": false,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules","dist","src/__tests__","**/*.test.ts","prisma/seed.ts"]
+}

@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+
+# Build and test output
+dist/
+build/
+coverage/
+target/
+*.tsbuildinfo
+test-results/
+playwright-report/
+
+# Environment files (keep examples safe to commit)
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Editor and operating-system files
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.DS_Store
+Thumbs.db
+
+# Generated Prisma clients. Each service's schema.prisma sets
+#   output = "../src/generated/prisma"
+# so `npm run db:generate` writes ~160 files per service, including a
+# platform-specific query engine binary (e.g. query_engine-windows.dll.node)
+# that is useless inside a linux image. Every Dockerfile regenerates the
+# client before tsc runs, so these must never be committed.
+**/src/generated/
+
+# Turborepo local task cache. Build output, not source — it should never have
+# been committed. The ~96 files already tracked under .turbo/cache predate this
+# line; gitignore does not untrack them, so clearing those is a separate
+# `git rm -r --cached .turbo` cleanup.
+.turbo/

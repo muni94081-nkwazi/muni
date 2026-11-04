@@ -1,0 +1,39 @@
+{
+  "name": "@muni/infrastructure",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "MUNI Platform — Shared Infrastructure (Kafka, Redis, Elasticsearch, Schema Registry)",
+  "exports": {
+    "./kafka/topics": "./kafka/topics.ts",
+    "./kafka/schemas": "./kafka/schemas.ts",
+    "./kafka/consumer": "./kafka/consumer.ts",
+    "./kafka/dlq": "./kafka/dlq.ts",
+    "./redis/cluster": "./redis/cluster.ts",
+    "./redis/streams": "./redis/streams.ts",
+    "./rabbitmq/topology": "./rabbitmq/topology.ts",
+    "./rabbitmq/envelope": "./rabbitmq/envelope.ts",
+    "./rabbitmq/connection": "./rabbitmq/connection.ts",
+    "./rabbitmq/publisher": "./rabbitmq/publisher.ts",
+    "./rabbitmq/idempotency": "./rabbitmq/idempotency.ts",
+    "./rabbitmq/consumer": "./rabbitmq/consumer.ts",
+    "./rabbitmq/schemas": "./rabbitmq/schemas.ts",
+    "./elasticsearch/client": "./elasticsearch/client.ts",
+    "./elasticsearch/mappings": "./elasticsearch/indices/mappings.ts",
+    "./schema-registry": "./schema-registry/client.ts"
+  },
+  "dependencies": {
+    "@elastic/elasticsearch": "^8.13.0",
+    "ajv": "^8.16.0",
+    "ajv-formats": "^3.0.1",
+    "amqplib": "^0.10.9",
+    "kafkajs": "^2.2.4",
+    "redis": "^4.6.14"
+  },
+  "devDependencies": {
+    "@types/amqplib": "^0.10.8",
+    "@types/node": "^22.7.4",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.2"
+  }
+}

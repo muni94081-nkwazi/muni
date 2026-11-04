@@ -1,0 +1,156 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: muni
+    environment: production
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
+rule_files:
+  - "alerts/services.yml"
+  - "alerts/infrastructure.yml"
+  - "alerts/business.yml"
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'kubernetes-pods'
+    kubernetes_sd_configs:
+      - role: pod
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        action: keep
+        regex: true
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+        action: replace
+        target_label: __metrics_path__
+        regex: (.+)
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+        action: replace
+        target_label: __metrics_path__
+        regex: (.+)
+      - action: labelmap
+        regex: __meta_kubernetes_pod_label_(.+)
+      - source_labels: [__meta_kubernetes_namespace]
+        action: replace
+        target_label: namespace
+      - source_labels: [__meta_kubernetes_pod_name]
+        action: replace
+        target_label: pod
+
+  - job_name: 'kubernetes-nodes'
+    kubernetes_sd_configs:
+      - role: node
+
+  - job_name: 'kubernetes-apiservers'
+    kubernetes_sd_configs:
+      - role: endpoints
+    scheme: https
+    tls_config:
+      ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+      insecure_skip_verify: true
+    bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+        action: keep
+        regex: default;kubernetes;https
+
+  - job_name: 'api-gateway'
+    static_configs:
+      - targets: ['api-gateway.muni.svc.cluster.local:8080']
+  - job_name: 'auth-service'
+    static_configs:
+      - targets: ['auth-service.muni.svc.cluster.local:4001']
+  - job_name: 'product-service'
+    static_configs:
+      - targets: ['product-service.muni.svc.cluster.local:4002']
+  - job_name: 'order-service'
+    static_configs:
+      - targets: ['order-service.muni.svc.cluster.local:4003']
+  - job_name: 'payment-service'
+    static_configs:
+      - targets: ['payment-service.muni.svc.cluster.local:4004']
+  - job_name: 'shipping-service'
+    static_configs:
+      - targets: ['shipping-service.muni.svc.cluster.local:4005']
+  - job_name: 'notification-service'
+    static_configs:
+      - targets: ['notification-service.muni.svc.cluster.local:4007']
+  - job_name: 'analytics-service'
+    static_configs:
+      - targets: ['analytics-service.muni.svc.cluster.local:4008']
+  - job_name: 'search-service'
+    static_configs:
+      - targets: ['search-service.muni.svc.cluster.local:4010']
+  - job_name: 'inventory-service'
+    static_configs:
+      - targets: ['inventory-service.muni.svc.cluster.local:4004']
+  - job_name: 'review-service'
+    static_configs:
+      - targets: ['review-service.muni.svc.cluster.local:4011']
+  - job_name: 'currency-service'
+    static_configs:
+      - targets: ['currency-service.muni.svc.cluster.local:4013']
+  - job_name: 'tax-service'
+    static_configs:
+      - targets: ['tax-service.muni.svc.cluster.local:4014']
+  - job_name: 'discount-service'
+    static_configs:
+      - targets: ['discount-service.muni.svc.cluster.local:4015']
+  - job_name: 'wishlist-service'
+    static_configs:
+      - targets: ['wishlist-service.muni.svc.cluster.local:4016']
+  - job_name: 'cart-service'
+    static_configs:
+      - targets: ['cart-service.muni.svc.cluster.local:4017']
+  - job_name: 'media-service'
+    static_configs:
+      - targets: ['media-service.muni.svc.cluster.local:4018']
+  - job_name: 'fraud-service'
+    static_configs:
+      - targets: ['fraud-service.muni.svc.cluster.local:4019']
+  - job_name: 'return-service'
+    static_configs:
+      - targets: ['return-service.muni.svc.cluster.local:4020']
+  - job_name: 'dispute-service'
+    static_configs:
+      - targets: ['dispute-service.muni.svc.cluster.local:4021']
+  - job_name: 'marketplace-service'
+    static_configs:
+      - targets: ['marketplace-service.muni.svc.cluster.local:4022']
+  - job_name: 'fulfillment-service'
+    static_configs:
+      - targets: ['fulfillment-service.muni.svc.cluster.local:4023']
+  - job_name: 'checkout-service'
+    static_configs:
+      - targets: ['checkout-service.muni.svc.cluster.local:4024']
+
+  - job_name: 'kafka-exporter'
+    static_configs:
+      - targets: ['kafka-exporter.muni-monitoring:9308']
+  - job_name: 'redis-exporter'
+    static_configs:
+      - targets: ['redis-exporter.muni-monitoring:9121']
+  - job_name: 'elasticsearch-exporter'
+    static_configs:
+      - targets: ['es-exporter.muni-monitoring:9114']
+  - job_name: 'postgres-exporter'
+    static_configs:
+      - targets: ['postgres-exporter.muni-monitoring:9187']
+  - job_name: 'node-exporter'
+    kubernetes_sd_configs:
+      - role: node
+    relabel_configs:
+      - source_labels: [__address__]
+        regex: (.+):(.+)
+        target_label: __address__
+        replacement: $1:9100
+  - job_name: 'kube-state-metrics'
+    static_configs:
+      - targets: ['kube-state-metrics.muni-monitoring:8080']

@@ -1,0 +1,63 @@
+# MUNI Platform — Falco Runtime Security Rules
+# Install: helm install falco falcosecurity/falco --namespace falco --create-namespace
+
+- rule: Unexpected outbound connection from API service
+  desc: Alert when a MUNI service makes an unexpected outbound connection
+  condition: >
+    spawned_process and
+    container.image.repository contains "muni" and
+    (proc.name in (curl, wget, nc, ncat, nmap)) and
+    not proc.pname in (sh, bash)
+  output: >
+    Unexpected outbound tool from MUNI container
+    (user=%user.name command=%proc.cmdline container=%container.name image=%container.image.repository)
+  priority: WARNING
+  tags: [muni, network]
+
+- rule: Shell spawned in MUNI container
+  desc: Alert when a shell is opened in a MUNI production container
+  condition: >
+    spawned_process and
+    container.image.repository contains "muni" and
+    proc.name in (bash, sh, zsh, dash, ash) and
+    container.namespace = "muni-prod"
+  output: >
+    Shell spawned in MUNI production container!
+    (user=%user.name shell=%proc.name parent=%proc.pname cmdline=%proc.cmdline
+    container=%container.name namespace=%k8s.ns.name)
+  priority: CRITICAL
+  tags: [muni, shell, intrusion]
+
+- rule: Sensitive file access in MUNI container
+  desc: Alert when sensitive files like /etc/passwd or /etc/shadow are read
+  condition: >
+    open_read and
+    container.image.repository contains "muni" and
+    fd.name in (/etc/passwd, /etc/shadow, /etc/sudoers, /root/.ssh/authorized_keys)
+  output: >
+    Sensitive file read in MUNI container
+    (user=%user.name file=%fd.name container=%container.name)
+  priority: ERROR
+  tags: [muni, file]
+
+- rule: Crypto mining detected
+  desc: Alert on common crypto mining process names
+  condition: >
+    spawned_process and
+    container.image.repository contains "muni" and
+    proc.name in (xmrig, minerd, cpuminer, ethminer, cgminer)
+  output: Crypto miner detected in MUNI container! (proc=%proc.name container=%container.name)
+  priority: CRITICAL
+  tags: [muni, cryptomining]
+
+- rule: MUNI checkout service unusual write
+  desc: Checkout service should not write to filesystem except logs
+  condition: >
+    open_write and
+    container.name contains "checkout-service" and
+    not fd.directory in (/tmp, /var/log, /app/logs)
+  output: >
+    Unexpected filesystem write from checkout-service
+    (file=%fd.name user=%user.name cmdline=%proc.cmdline)
+  priority: WARNING
+  tags: [muni, checkout, filesystem]

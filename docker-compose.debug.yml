@@ -1,0 +1,87 @@
+# ─── Debug override: publish every service port on the host ───────────────────
+#
+# The base docker-compose.yml deliberately publishes NO service ports. Inside
+# the compose network the services reach each other by name, and the only way
+# in from outside is the nginx edge — which is what makes the gateway's
+# stripClientIdentity, requireAuth/requireRole and Redis rate limiting an actual
+# boundary rather than a suggestion. With 4001-4033 bound to 0.0.0.0 anyone who
+# can reach the host talks straight to a service and skips all three.
+#
+# This file puts them back, for the times that is genuinely useful: attaching a
+# debugger, curling one service in isolation, or pointing a REST client at a
+# single upstream.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.debug.yml --profile services up -d
+#
+# Never use it on a host that is reachable from anywhere but your own machine.
+#
+# Generated from the port assignments that used to live in docker-compose.yml;
+# keep it in step when a service's PORT changes.
+
+services:
+  auth-service:
+    ports: ["4001:4001"]
+  user-service:
+    ports: ["3001:3001"]
+  product-service:
+    ports: ["4002:4002"]
+  inventory-service:
+    ports: ["4004:4004"]
+  search-service:
+    ports: ["4010:4010"]
+  recommendation-service:
+    ports: ["4008:4008"]
+  pricing-service:
+    ports: ["4033:4033"]
+  cart-service:
+    ports: ["4017:4017"]
+  checkout-service:
+    ports: ["4024:4024"]
+  order-service:
+    ports: ["4003:4003"]
+  payment-service:
+    ports: ["4005:4005"]
+  currency-service:
+    ports: ["4013:4013"]
+  tax-service:
+    ports: ["4014:4014"]
+  discount-service:
+    ports: ["4015:4015"]
+  fraud-service:
+    ports: ["4019:4019"]
+  shipping-service:
+    ports: ["4006:4006"]
+  fulfillment-service:
+    ports: ["4023:4023"]
+  return-service:
+    ports: ["4020:4020"]
+  container-service:
+    ports: ["4031:4031"]
+  review-service:
+    ports: ["4011:4011"]
+  dispute-service:
+    ports: ["4021:4021"]
+  buyer-protection-service:
+    ports: ["4026:4026"]
+  support-service:
+    ports: ["4032:4032"]
+  chat-service:
+    ports: ["4025:4025"]
+  notification-service:
+    ports: ["4007:4007"]
+  media-service:
+    ports: ["4018:4018"]
+  analytics-service:
+    ports: ["4009:4009"]
+  marketplace-service:
+    ports: ["4022:4022"]
+  wishlist-service:
+    ports: ["4016:4016"]
+  loyalty-service:
+    ports: ["4030:4030"]
+  advertising-service:
+    ports: ["4027:4027"]
+  qa-service:
+    ports: ["4029:4029"]
+  seller-education-service:
+    ports: ["4028:4028"]

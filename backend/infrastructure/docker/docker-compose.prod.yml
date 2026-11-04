@@ -1,0 +1,62 @@
+version: '3.8'
+
+x-prod-base: &prod-base
+  restart: unless-stopped
+  environment:
+    - NODE_ENV=production
+  deploy:
+    resources:
+      limits:
+        cpus: '0.5'
+        memory: 256M
+
+services:
+  api-gateway:
+    <<: *prod-base
+    image: registry.example.com/muni/api-gateway:latest
+    build: undefined
+
+  auth-service:
+    <<: *prod-base
+    image: registry.example.com/muni/auth-service:latest
+    build: undefined
+
+  product-service:
+    <<: *prod-base
+    image: registry.example.com/muni/product-service:latest
+    build: undefined
+
+  order-service:
+    <<: *prod-base
+    image: registry.example.com/muni/order-service:latest
+    build: undefined
+
+  user-service:
+    <<: *prod-base
+    image: registry.example.com/muni/user-service:latest
+    build: undefined
+
+  payment-service:
+    <<: *prod-base
+    image: registry.example.com/muni/payment-service:latest
+    build: undefined
+
+  shipping-service:
+    <<: *prod-base
+    image: registry.example.com/muni/shipping-service:latest
+    build: undefined
+
+  notification-service:
+    <<: *prod-base
+    image: registry.example.com/muni/notification-service:latest
+    build: undefined
+
+  recommendation-service:
+    <<: *prod-base
+    image: registry.example.com/muni/recommendation-service:latest
+    build: undefined
+
+  analytics-service:
+    <<: *prod-base
+    image: registry.example.com/muni/analytics-service:latest
+    build: undefined

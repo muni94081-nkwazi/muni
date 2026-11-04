@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: fraud-service
+  namespace: muni
+  labels:
+    app: fraud-service
+spec:
+  selector:
+    app: fraud-service
+  ports:
+  - name: http
+    port: 4019
+    targetPort: 4019
+    protocol: TCP
+  type: ClusterIP

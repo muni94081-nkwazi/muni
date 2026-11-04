@@ -1,0 +1,25 @@
+{
+  "auth": {
+    "login": "Wọle",
+    "register": "Ṣẹda Àkáǹtì",
+    "email": "Imeeli",
+    "password": "Ọrọ igbaniwọle"
+  },
+  "product": {
+    "addToCart": "Fi sí Agbọn"
+  },
+  "cart": {
+    "title": "Agbọn Mi",
+    "proceedToCheckout": "Tẹsiwaju"
+  },
+  "checkout": {
+    "placeOrder": "Fi Àṣẹ Sílẹ̀"
+  },
+  "orders": {
+    "title": "Àwọn aṣẹ mi"
+  },
+  "profile": {
+    "signOut": "Jade",
+    "language": "Ede"
+  }
+}

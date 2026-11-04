@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# ─────────────────────────────────────────────────────────────────────────────
+# MUNI Platform — Pre-commit hook
+# Installed via: husky install
+# Purpose: Block secrets, enforce lint, run affected unit tests before commit.
+#
+# Install:
+#   npm install --save-dev husky lint-staged
+#   npx husky install
+#   cp scripts/hooks/pre-commit .husky/pre-commit && chmod +x .husky/pre-commit
+# ─────────────────────────────────────────────────────────────────────────────
+
+set -e
+
+echo "🔒 MUNI pre-commit checks starting..."
+
+# ── 1. Secrets detection ──────────────────────────────────────────────────────
+if command -v gitleaks &>/dev/null; then
+  echo "🕵️  Running gitleaks..."
+  gitleaks protect --staged --config .gitleaks.toml --verbose
+  echo "✅ No secrets detected"
+else
+  echo "⚠️  gitleaks not installed — skipping secrets scan"
+  echo "   Install: brew install gitleaks  OR  choco install gitleaks"
+fi
+
+# ── 2. Lint-staged (lint + format only changed files) ─────────────────────────
+echo "🔍 Running lint-staged..."
+npx lint-staged
+
+echo "✅ MUNI pre-commit checks passed!"

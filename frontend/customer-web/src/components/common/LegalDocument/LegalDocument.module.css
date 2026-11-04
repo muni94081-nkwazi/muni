@@ -1,0 +1,95 @@
+/*
+ * Long-form legal document layout.
+ *
+ * A CSS module rather than the inline styles the neighbouring footer pages use,
+ * because this needs media queries: legal text has to stay at a readable measure
+ * on a wide desktop and still breathe on a phone, and inline styles cannot do
+ * that. Follows the same module pattern as Footer.module.css.
+ *
+ * Colours are the design tokens from src/styles/theme.ts. The site has no dark
+ * theme, so none is invented here.
+ */
+
+.sheet {
+  background: #ffffff;
+  border: 1px solid #e3dbc8;
+  border-radius: 12px;
+  padding: 32px;
+  /* ~70 characters at this size — the comfortable measure for body text. A
+     full-width legal document on a 1440px monitor is unreadable. */
+  max-width: 72ch;
+  margin: 0 auto 48px;
+  color: #1a1a16;
+  font-family: 'Inter', 'Segoe UI', sans-serif;
+}
+
+.effective {
+  font-size: 0.85rem;
+  color: #5c574a;
+  margin: 0 0 20px;
+}
+
+.intro {
+  background: #f4efe4;
+  border-radius: 10px;
+  padding: 16px 18px;
+  margin: 0 0 32px;
+  font-size: 1rem;
+  line-height: 1.65;
+}
+
+.section {
+  margin-bottom: 32px;
+  /* Stops a heading being orphaned at the foot of a printed page. */
+  break-inside: avoid;
+}
+
+.heading {
+  font-family: 'Space Grotesk', 'Segoe UI', sans-serif;
+  font-size: 1.05rem;
+  font-weight: 800;
+  margin: 0 0 10px;
+  color: #1a1a16;
+}
+
+.paragraph {
+  font-size: 0.95rem;
+  line-height: 1.7;
+  color: #1a1a16;
+  margin: 0 0 12px;
+}
+
+.bullets {
+  margin: 0 0 12px;
+  padding-left: 20px;
+}
+
+.bullet {
+  font-size: 0.95rem;
+  line-height: 1.7;
+  margin-bottom: 8px;
+}
+
+.footerNote {
+  border-top: 1px solid #e3dbc8;
+  margin-top: 32px;
+  padding-top: 16px;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: #5c574a;
+}
+
+/* Phones: reclaim the horizontal padding the text needs, and drop the card
+   border so the document uses the full width of a small screen. */
+@media (max-width: 640px) {
+  .sheet {
+    padding: 20px 16px;
+    border-radius: 10px;
+  }
+
+  .paragraph,
+  .bullet {
+    font-size: 0.95rem;
+    line-height: 1.65;
+  }
+}

@@ -1,0 +1,553 @@
+global:
+  registry: 123456789012.dkr.ecr.af-south-1.amazonaws.com/muni
+  imageTag: 1.0.0
+  imagePullPolicy: IfNotPresent
+  nameOverride: ""
+
+ingress:
+  enabled: true
+  className: nginx
+  host: api.muni.ug
+  tls:
+    enabled: true
+  annotations: {}
+
+serviceAccount:
+  create: true
+  name: ""
+
+configmap:
+  NODE_ENV: "production"
+  LOG_LEVEL: "info"
+
+secrets:
+  JWT_SECRET: "placeholder"
+  DB_PASSWORD: "placeholder"
+  STRIPE_KEY: "placeholder"
+  PAYPAL_KEY: "placeholder"
+
+kafka:
+  brokers: "kafka:9092"
+
+redis:
+  url: "redis://redis:6379"
+
+elasticsearch:
+  url: "http://elasticsearch:9200"
+
+postgresql:
+  host: "postgresql"
+  port: "5432"
+  database: "muni"
+  user: "postgres"
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+services:
+  api-gateway:
+    enabled: true
+    replicaCount: 2
+    image:
+      repository: api-gateway
+      tag: ""
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    autoscaling:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 80
+    service:
+      port: 8080
+    env: {}
+
+  auth-service:
+    enabled: true
+    replicaCount: 2
+    image:
+      repository: auth-service
+      tag: ""
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    autoscaling:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 80
+    service:
+      port: 4001
+    env: {}
+
+  product-service:
+    enabled: true
+    replicaCount: 2
+    image:
+      repository: product-service
+      tag: ""
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    autoscaling:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 80
+    service:
+      port: 4002
+    env: {}
+
+  order-service:
+    enabled: true
+    replicaCount: 2
+    image:
+      repository: order-service
+      tag: ""
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    autoscaling:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 80
+    service:
+      port: 4003
+    env: {}
+
+  payment-service:
+    enabled: true
+    replicaCount: 2
+    image:
+      repository: payment-service
+      tag: ""
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    autoscaling:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 80
+    service:
+      port: 4004
+    env: {}
+
+  shipping-service:
+    enabled: true
+    replicaCount: 2
+    image:
+      repository: shipping-service
+      tag: ""
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    autoscaling:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 80
+    service:
+      port: 4005
+    env: {}
+
+  notification-service:
+    enabled: true
+    replicaCount: 2
+    image:
+      repository: notification-service
+      tag: ""
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    autoscaling:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 80
+    service:
+      port: 4007
+    env: {}
+
+  analytics-service:
+    enabled: true
+    replicaCount: 2
+    image:
+      repository: analytics-service
+      tag: ""
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    autoscaling:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 80
+    service:
+      port: 4008
+    env: {}
+
+  search-service:
+    enabled: true
+    replicaCount: 2
+    image:
+      repository: search-service
+      tag: ""
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    autoscaling:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 80
+    service:
+      port: 4010
+    env: {}
+
+  inventory-service:
+    enabled: true
+    replicaCount: 2
+    image:
+      repository: inventory-service
+      tag: ""
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    autoscaling:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 80
+    service:
+      port: 4011
+    env: {}
+
+  review-service:
+    enabled: true
+    replicaCount: 2
+    image:
+      repository: review-service
+      tag: ""
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    autoscaling:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 80
+    service:
+      port: 4012
+    env: {}
+
+  currency-service:
+    enabled: true
+    replicaCount: 2
+    image:
+      repository: currency-service
+      tag: ""
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    autoscaling:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 80
+    service:
+      port: 4013
+    env: {}
+
+  tax-service:
+    enabled: true
+    replicaCount: 2
+    image:
+      repository: tax-service
+      tag: ""
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    autoscaling:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 80
+    service:
+      port: 4014
+    env: {}
+
+  discount-service:
+    enabled: true
+    replicaCount: 2
+    image:
+      repository: discount-service
+      tag: ""
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    autoscaling:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 80
+    service:
+      port: 4015
+    env: {}
+
+  wishlist-service:
+    enabled: true
+    replicaCount: 2
+    image:
+      repository: wishlist-service
+      tag: ""
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    autoscaling:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 80
+    service:
+      port: 4016
+    env: {}
+
+  cart-service:
+    enabled: true
+    replicaCount: 2
+    image:
+      repository: cart-service
+      tag: ""
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    autoscaling:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 80
+    service:
+      port: 4017
+    env: {}
+
+  media-service:
+    enabled: true
+    replicaCount: 2
+    image:
+      repository: media-service
+      tag: ""
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    autoscaling:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 80
+    service:
+      port: 4018
+    env: {}
+
+  fraud-service:
+    enabled: true
+    replicaCount: 2
+    image:
+      repository: fraud-service
+      tag: ""
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    autoscaling:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 80
+    service:
+      port: 4019
+    env: {}
+
+  return-service:
+    enabled: true
+    replicaCount: 2
+    image:
+      repository: return-service
+      tag: ""
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    autoscaling:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 80
+    service:
+      port: 4020
+    env: {}
+
+  dispute-service:
+    enabled: true
+    replicaCount: 2
+    image:
+      repository: dispute-service
+      tag: ""
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    autoscaling:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 80
+    service:
+      port: 4021
+    env: {}
+
+  marketplace-service:
+    enabled: true
+    replicaCount: 2
+    image:
+      repository: marketplace-service
+      tag: ""
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    autoscaling:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 80
+    service:
+      port: 4022
+    env: {}
+
+  fulfillment-service:
+    enabled: true
+    replicaCount: 2
+    image:
+      repository: fulfillment-service
+      tag: ""
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    autoscaling:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 80
+    service:
+      port: 4023
+    env: {}
+
+  checkout-service:
+    enabled: true
+    replicaCount: 2
+    image:
+      repository: checkout-service
+      tag: ""
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    autoscaling:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 80
+    service:
+      port: 4024
+    env: {}

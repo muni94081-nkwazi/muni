@@ -1,0 +1,134 @@
+// ─── loyalty-service schema ───────────────────────────────────────────────────
+//
+// Owns database `muni_loyalty`. Replaces five Maps: usersStore, txStore,
+// rewardsStore, redemptionsStore and referralsStore.
+//
+// Points are money-adjacent — they redeem for discount codes and free
+// shipping — so a balance that resets on restart either robs a customer of
+// what they earned or hands out discounts twice.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum LoyaltyTier {
+  BRONZE
+  SILVER
+  GOLD
+  PLATINUM
+}
+
+enum LoyaltyTransactionType {
+  EARNED
+  REDEEMED
+  EXPIRED
+}
+
+enum LoyaltySource {
+  PURCHASE
+  REVIEW
+  REFERRAL
+  BIRTHDAY
+}
+
+enum LoyaltyRewardType {
+  DISCOUNT
+  FREE_SHIPPING
+  PRODUCT
+}
+
+enum RedemptionStatus {
+  PENDING
+  COMPLETED
+  EXPIRED
+}
+
+enum ReferralStatus {
+  PENDING
+  COMPLETED
+}
+
+model LoyaltyUser {
+  userId String @id @map("user_id")
+
+  points         Int
+  tier           LoyaltyTier
+  tierProgress   Int         @map("tier_progress")
+  lifetimePoints Int         @map("lifetime_points")
+
+  updatedAt DateTime @map("updated_at")
+
+  @@map("loyalty_users")
+}
+
+model LoyaltyTransaction {
+  id     String @id
+  userId String @map("user_id")
+
+  points      Int
+  type        LoyaltyTransactionType
+  source      LoyaltySource
+  referenceId String?                @map("reference_id")
+  description String
+
+  createdAt DateTime @map("created_at")
+
+  // getHistory reads one user's ledger newest-first.
+  @@index([userId, createdAt])
+  @@map("loyalty_transactions")
+}
+
+model LoyaltyReward {
+  id          String @id
+  name        String
+  description String
+
+  pointsCost Int               @map("points_cost")
+  type       LoyaltyRewardType
+  value      Int
+  isActive   Boolean           @default(true) @map("is_active")
+
+  @@index([isActive])
+  @@map("loyalty_rewards")
+}
+
+model LoyaltyRedemption {
+  id       String @id
+  userId   String @map("user_id")
+  rewardId String @map("reward_id")
+
+  rewardName String @map("reward_name")
+  pointsSpent Int   @map("points_spent")
+  /// Handed to the customer at checkout, so it must be unique.
+  code        String @unique
+
+  status     RedemptionStatus
+  redeemedAt DateTime         @map("redeemed_at")
+
+  @@index([userId, redeemedAt])
+  @@map("loyalty_redemptions")
+}
+
+model LoyaltyReferral {
+  /// The Map was keyed by the referral code, not by id, and that is what a
+  /// referee presents. Kept unique for the same reason.
+  referralCode String @id @map("referral_code")
+
+  id         String  @unique
+  referrerId String  @map("referrer_id")
+  refereeId  String? @map("referee_id")
+
+  status       ReferralStatus
+  rewardPoints Int            @map("reward_points")
+
+  createdAt DateTime @map("created_at")
+
+  @@index([referrerId])
+  @@map("loyalty_referrals")
+}
